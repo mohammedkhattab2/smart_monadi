@@ -1,24 +1,30 @@
 import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
+import 'package:smart_monadi/app/di/app_dependencies.dart';
 import 'package:smart_monadi/app/design/app_primitives.dart';
 import 'package:smart_monadi/app/design/design_tokens.dart';
 import 'package:smart_monadi/features/auth/domain/user_role.dart';
 import 'package:smart_monadi/features/driver/presentation/screens/driver_screen.dart';
+import 'package:smart_monadi/features/driver/presentation/viewmodels/driver_live_view_model.dart';
 import 'package:smart_monadi/features/operations/presentation/screens/operations_dashboard_screen.dart';
-import 'package:smart_monadi/features/passenger/data/repositories/passenger_repository.dart';
+import 'package:smart_monadi/features/operations/presentation/viewmodels/operations_dashboard_view_model.dart';
 import 'package:smart_monadi/features/passenger/presentation/screens/passenger_screen.dart';
 
 class HomeShell extends StatefulWidget {
   const HomeShell({
     super.key,
+    required this.dependencies,
     required this.role,
+    required this.currentUserId,
     required this.onSignOut,
     required this.onToggleLocale,
     required this.onToggleTheme,
   });
 
+  final AppDependencies dependencies;
   final UserRole role;
+  final String currentUserId;
   final Future<void> Function() onSignOut;
   final VoidCallback onToggleLocale;
   final VoidCallback onToggleTheme;
@@ -28,8 +34,24 @@ class HomeShell extends StatefulWidget {
 }
 
 class _HomeShellState extends State<HomeShell> {
-  final _repository = PassengerRepository();
+  late final DriverLiveViewModel _driverViewModel;
+  late final OperationsDashboardViewModel _operationsViewModel;
   int _currentIndex = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _driverViewModel = widget.dependencies.createDriverLiveViewModel();
+    _operationsViewModel = widget.dependencies
+        .createOperationsDashboardViewModel();
+  }
+
+  @override
+  void dispose() {
+    _driverViewModel.dispose();
+    _operationsViewModel.dispose();
+    super.dispose();
+  }
 
   List<NavigationDestination> _bottomDestinations() {
     if (widget.role == UserRole.driver) {
@@ -88,10 +110,16 @@ class _HomeShellState extends State<HomeShell> {
     final isWide = MediaQuery.of(context).size.width >= 980;
     final pages = widget.role == UserRole.driver
         ? [
-            DriverScreen(repository: _repository),
-            const OperationsDashboardScreen(),
+            DriverScreen(viewModel: _driverViewModel),
+            OperationsDashboardScreen(viewModel: _operationsViewModel),
           ]
-        : [PassengerScreen(repository: _repository)];
+        : [
+            PassengerScreen(
+              repository: widget.dependencies.passengerRepository,
+              locationRepository: widget.dependencies.locationRepository,
+              currentUserId: widget.currentUserId,
+            ),
+          ];
 
     return Scaffold(
       appBar: AppBar(

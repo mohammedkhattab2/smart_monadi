@@ -3,23 +3,18 @@ import 'dart:async';
 import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
-import 'package:geolocator/geolocator.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:smart_monadi/app/design/app_primitives.dart';
 import 'package:smart_monadi/app/design/design_tokens.dart';
-import 'package:smart_monadi/features/automation/data/repositories/trip_event_repository.dart';
 import 'package:smart_monadi/features/driver/presentation/viewmodels/driver_live_view_model.dart';
-import 'package:smart_monadi/features/location/data/repositories/bus_location_repository.dart';
-import 'package:smart_monadi/features/location/data/services/device_location_service.dart';
 import 'package:smart_monadi/features/location/domain/entities/bus_location.dart';
-import 'package:smart_monadi/features/passenger/data/repositories/passenger_repository.dart';
 import 'package:smart_monadi/features/passenger/domain/entities/passenger.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 class DriverScreen extends StatefulWidget {
-  const DriverScreen({super.key, required this.repository});
+  const DriverScreen({super.key, required this.viewModel});
 
-  final PassengerRepository repository;
+  final DriverLiveViewModel viewModel;
 
   @override
   State<DriverScreen> createState() => _DriverScreenState();
@@ -27,82 +22,32 @@ class DriverScreen extends StatefulWidget {
 
 class _DriverScreenState extends State<DriverScreen> {
   late final DriverLiveViewModel _liveViewModel;
-  final _tripEventRepository = TripEventRepository();
-  final Set<String> _manualPickupInProgress = <String>{};
   StreamSubscription<List<Passenger>>? _passengerChangesSubscription;
-  final Map<String, _PassengerScheduleSnapshot> _knownSchedules =
-      <String, _PassengerScheduleSnapshot>{};
-  final List<_ScheduleAlertItem> _scheduleAlerts = <_ScheduleAlertItem>[];
 
   @override
   void initState() {
     super.initState();
-    _liveViewModel = DriverLiveViewModel(
-      locationService: DeviceLocationService(),
-      locationRepository: BusLocationRepository(),
-      passengerRepository: widget.repository,
-      tripEventRepository: TripEventRepository(),
-    );
+    _liveViewModel = widget.viewModel;
     _liveViewModel.startTracking();
-    _passengerChangesSubscription = widget.repository.watchPassengers().listen(
-      _onPassengerSchedulesSnapshot,
+    _passengerChangesSubscription = _liveViewModel.watchPassengers().listen(
+      _liveViewModel.onPassengerSchedulesSnapshot,
     );
   }
 
   @override
   void dispose() {
     _passengerChangesSubscription?.cancel();
-    _liveViewModel.dispose();
     super.dispose();
   }
 
-  void _onPassengerSchedulesSnapshot(List<Passenger> passengers) {
-    final activeIds = <String>{};
-    for (final passenger in passengers) {
-      activeIds.add(passenger.id);
-
-      final current = _PassengerScheduleSnapshot(
-        pickupTime: passenger.pickupTime,
-        returnTime: passenger.returnTime,
-      );
-      final previous = _knownSchedules[passenger.id];
-
-      if (previous != null &&
-          (previous.pickupTime != current.pickupTime ||
-              previous.returnTime != current.returnTime)) {
-        _scheduleAlerts.insert(
-          0,
-          _ScheduleAlertItem(
-            passengerName: passenger.name,
-            previousPickup: previous.pickupTime,
-            currentPickup: current.pickupTime,
-            previousReturn: previous.returnTime,
-            currentReturn: current.returnTime,
-          ),
-        );
-      }
-
-      _knownSchedules[passenger.id] = current;
-    }
-
-    _knownSchedules.removeWhere((id, _) => !activeIds.contains(id));
-    if (_scheduleAlerts.length > 8) {
-      _scheduleAlerts.removeRange(8, _scheduleAlerts.length);
-    }
-
-    if (mounted) {
-      setState(() {});
-    }
-  }
-
-  String _formatScheduleAlert(_ScheduleAlertItem alert) {
+  String _formatScheduleAlert(DriverScheduleAlert alert) {
     return '${alert.passengerName}\n'
         '${'driver.alert_pickup'.tr()}: ${alert.previousPickup} -> ${alert.currentPickup}\n'
         '${'driver.alert_return'.tr()}: ${alert.previousReturn} -> ${alert.currentReturn}';
   }
 
   String _buildEtaText(BusLocation? busLocation, double? lat, double? lng) {
-    final eta = _etaMinutes(busLocation, lat, lng);
+    final eta = _liveViewModel.etaMinutes(busLocation, lat, lng);
     if (eta == null) {
       return 'driver.eta_unavailable'.tr();
     }
@@ -110,29 +55,8 @@ class _DriverScreenState extends State<DriverScreen> {
     return 'driver.eta_format'.tr(args: ['${eta.clamp(1, 999)}']);
   }
 
-  int? _etaMinutes(BusLocation? busLocation, double? lat, double? lng) {
-    if (busLocation == null || lat == null || lng == null) {
-      return null;
-    }
-
-    final distanceMeters = Geolocator.distanceBetween(
-      busLocation.latitude,
-      busLocation.longitude,
-      lat,
-      lng,
-    );
-    const averageSpeedMetersPerMinute = 500.0;
-    return (distanceMeters / averageSpeedMetersPerMinute).ceil();
-  }
-
   String _buildStatusText(Passenger passenger) {
-    if (passenger.isPickedUp || passenger.geofenceState == 'picked_up') {
-      return 'driver.status_picked_up'.tr();
-    }
-    if (passenger.geofenceState == 'approaching') {
-      return 'driver.status_approaching'.tr();
-    }
-    return 'driver.status_waiting'.tr();
+    return _liveViewModel.statusKey(passenger).tr();
   }
 
   Color _statusColor(Passenger passenger, ColorScheme colorScheme) {
@@ -143,16 +67,6 @@ class _DriverScreenState extends State<DriverScreen> {
       return colorScheme.tertiary;
     }
     return colorScheme.outline;
-  }
-
-  int _statusPriority(Passenger passenger) {
-    if (passenger.geofenceState == 'approaching') {
-      return 0;
-    }
-    if (passenger.isPickedUp || passenger.geofenceState == 'picked_up') {
-      return 2;
-    }
-    return 1;
   }
 
   Future<void> _callPassenger(Passenger passenger) async {
@@ -168,10 +82,6 @@ class _DriverScreenState extends State<DriverScreen> {
   }
 
   Future<void> _manualMarkPickedUp(Passenger passenger) async {
-    if (_manualPickupInProgress.contains(passenger.id)) {
-      return;
-    }
-
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) {
@@ -198,48 +108,25 @@ class _DriverScreenState extends State<DriverScreen> {
       return;
     }
 
-    setState(() {
-      _manualPickupInProgress.add(passenger.id);
-    });
+    final errorKey = await _liveViewModel.manualMarkPickedUp(passenger);
 
-    try {
-      await widget.repository.markPickedUp(passengerId: passenger.id);
+    if (!mounted) {
+      return;
+    }
 
-      await _tripEventRepository.addPickupLog(
-        passengerId: passenger.id,
-        passengerPhone: passenger.phone,
-        type: 'picked_up_manual',
-        message: 'Passenger manually marked as picked up by driver',
-        payload: {'source': 'driver_manual_action', 'name': passenger.name},
-      );
-
-      await _tripEventRepository.queueSms(
-        passengerId: passenger.id,
-        toPhone: passenger.phone,
-        template: 'arrival_now',
-        variables: {'name': passenger.name, 'pickupTime': passenger.pickupTime},
-      );
-
+    if (errorKey != null) {
       if (!mounted) {
         return;
       }
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(SnackBar(content: Text('driver.manual_pickup_done'.tr())));
-    } catch (_) {
-      if (!mounted) {
-        return;
-      }
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('driver.manual_pickup_failed'.tr())),
-      );
-    } finally {
-      if (mounted) {
-        setState(() {
-          _manualPickupInProgress.remove(passenger.id);
-        });
-      }
+      ).showSnackBar(SnackBar(content: Text(errorKey.tr())));
+      return;
     }
+
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text('driver.manual_pickup_done'.tr())));
   }
 
   @override
@@ -332,7 +219,7 @@ class _DriverScreenState extends State<DriverScreen> {
             ),
             Expanded(
               child: StreamBuilder(
-                stream: widget.repository.watchPassengers(),
+                stream: _liveViewModel.watchPassengers(),
                 builder: (context, snapshot) {
                   final passengers = snapshot.data ?? const [];
                   final busLocationSnapshot = _liveViewModel.watchBusLocation();
@@ -386,39 +273,10 @@ class _DriverScreenState extends State<DriverScreen> {
 
                       final busLocation = busSnapshot.data;
                       final colorScheme = Theme.of(context).colorScheme;
-                      final sortedPassengers =
-                          passengers.toList(growable: false)..sort((a, b) {
-                            final statusCompare = _statusPriority(
-                              a,
-                            ).compareTo(_statusPriority(b));
-                            if (statusCompare != 0) {
-                              return statusCompare;
-                            }
-
-                            final aEta = _etaMinutes(
-                              busLocation,
-                              a.latitude,
-                              a.longitude,
-                            );
-                            final bEta = _etaMinutes(
-                              busLocation,
-                              b.latitude,
-                              b.longitude,
-                            );
-
-                            if (aEta == null && bEta == null) {
-                              return a.name.toLowerCase().compareTo(
-                                b.name.toLowerCase(),
-                              );
-                            }
-                            if (aEta == null) {
-                              return 1;
-                            }
-                            if (bEta == null) {
-                              return -1;
-                            }
-                            return aEta.compareTo(bEta);
-                          });
+                      final sortedPassengers = _liveViewModel.sortPassengers(
+                        passengers,
+                        busLocation,
+                      );
 
                       final pickedUpCount = passengers
                           .where(
@@ -431,7 +289,8 @@ class _DriverScreenState extends State<DriverScreen> {
                           .length;
                       final waitingCount =
                           passengers.length - pickedUpCount - approachingCount;
-                      final hasAlerts = _scheduleAlerts.isNotEmpty;
+                      final alerts = _liveViewModel.scheduleAlerts;
+                      final hasAlerts = alerts.isNotEmpty;
 
                       return ListView.separated(
                         padding: EdgeInsets.all(16.w),
@@ -461,7 +320,7 @@ class _DriverScreenState extends State<DriverScreen> {
                                             ),
                                       ),
                                       SizedBox(height: AppSpacing.xs.h),
-                                      ..._scheduleAlerts
+                                      ...alerts
                                           .take(3)
                                           .map(
                                             (alert) => Padding(
@@ -524,8 +383,8 @@ class _DriverScreenState extends State<DriverScreen> {
                             passenger,
                             colorScheme,
                           );
-                          final isManualUpdating = _manualPickupInProgress
-                              .contains(passenger.id);
+                          final isManualUpdating = _liveViewModel
+                              .isManualPickupInProgress(passenger.id);
                           final canManualPickup =
                               !(passenger.isPickedUp ||
                                   passenger.geofenceState == 'picked_up');
@@ -702,30 +561,4 @@ class _DriverCountChip extends StatelessWidget {
       ),
     );
   }
-}
-
-class _PassengerScheduleSnapshot {
-  const _PassengerScheduleSnapshot({
-    required this.pickupTime,
-    required this.returnTime,
-  });
-
-  final String pickupTime;
-  final String returnTime;
-}
-
-class _ScheduleAlertItem {
-  const _ScheduleAlertItem({
-    required this.passengerName,
-    required this.previousPickup,
-    required this.currentPickup,
-    required this.previousReturn,
-    required this.currentReturn,
-  });
-
-  final String passengerName;
-  final String previousPickup;
-  final String currentPickup;
-  final String previousReturn;
-  final String currentReturn;
 }

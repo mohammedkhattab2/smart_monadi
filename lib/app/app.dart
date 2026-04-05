@@ -2,6 +2,7 @@ import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:smart_monadi/app/di/app_dependencies.dart';
 import 'package:smart_monadi/app/theme/app_theme.dart';
 import 'package:smart_monadi/features/auth/presentation/screens/auth_gate_screen.dart';
 
@@ -14,6 +15,7 @@ class SmartMonadiApp extends StatefulWidget {
 
 class _SmartMonadiAppState extends State<SmartMonadiApp> {
   static const _themeModeKey = 'app.theme_mode';
+  final AppDependencies _dependencies = AppDependencies.create();
   ThemeMode _themeMode = ThemeMode.system;
   bool _settingsLoaded = false;
 
@@ -98,6 +100,8 @@ class _SmartMonadiAppState extends State<SmartMonadiApp> {
           darkTheme: AppTheme.dark(),
           themeMode: _themeMode,
           home: AuthGateScreen(
+            dependencies: _dependencies,
+            authRepository: _dependencies.authRepository,
             onToggleLocale: () => _toggleLocale(context),
             onToggleTheme: _toggleThemeMode,
           ),

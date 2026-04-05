@@ -3,13 +3,15 @@ import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:smart_monadi/app/design/app_primitives.dart';
 import 'package:smart_monadi/app/design/design_tokens.dart';
-import 'package:smart_monadi/features/auth/data/services/auth_service.dart';
+import 'package:smart_monadi/features/auth/domain/repositories/auth_repository.dart';
 import 'package:smart_monadi/features/auth/domain/user_role.dart';
+import 'package:smart_monadi/features/auth/domain/usecases/register_use_case.dart';
+import 'package:smart_monadi/features/auth/domain/usecases/sign_in_use_case.dart';
 
 class AuthScreen extends StatefulWidget {
   const AuthScreen({super.key, required this.authService});
 
-  final AuthService authService;
+  final AuthRepository authService;
 
   @override
   State<AuthScreen> createState() => _AuthScreenState();
@@ -23,6 +25,8 @@ class _AuthScreenState extends State<AuthScreen>
   static final RegExp _timeRegex = RegExp(r'^([01]\d|2[0-3]):[0-5]\d$');
 
   late final TabController _tabController;
+  late final SignInUseCase _signInUseCase;
+  late final RegisterUseCase _registerUseCase;
   final _signInEmailController = TextEditingController();
   final _signInPasswordController = TextEditingController();
   final _registerEmailController = TextEditingController();
@@ -39,6 +43,8 @@ class _AuthScreenState extends State<AuthScreen>
   void initState() {
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
+    _signInUseCase = SignInUseCase(widget.authService);
+    _registerUseCase = RegisterUseCase(widget.authService);
   }
 
   @override
@@ -216,7 +222,7 @@ class _AuthScreenState extends State<AuthScreen>
                         }
 
                         _run(() {
-                          return widget.authService.signIn(
+                          return _signInUseCase(
                             email: _signInEmailController.text.trim(),
                             password: _signInPasswordController.text,
                           );
@@ -339,7 +345,7 @@ class _AuthScreenState extends State<AuthScreen>
                           }
 
                           _run(() {
-                            return widget.authService.register(
+                            return _registerUseCase(
                               email: _registerEmailController.text.trim(),
                               password: _registerPasswordController.text,
                               role: _registerRole,

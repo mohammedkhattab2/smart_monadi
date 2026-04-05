@@ -1,8 +1,9 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:smart_monadi/features/auth/domain/repositories/auth_repository.dart';
 import 'package:smart_monadi/features/auth/domain/user_role.dart';
 
-class AuthService {
+class AuthService implements AuthRepository {
   AuthService({FirebaseAuth? auth, FirebaseFirestore? firestore})
     : _auth = auth ?? FirebaseAuth.instance,
       _firestore = firestore ?? FirebaseFirestore.instance;
@@ -10,12 +11,15 @@ class AuthService {
   final FirebaseAuth _auth;
   final FirebaseFirestore _firestore;
 
+  @override
   Stream<User?> authStateChanges() => _auth.authStateChanges();
 
+  @override
   Future<void> signIn({required String email, required String password}) async {
     await _auth.signInWithEmailAndPassword(email: email, password: password);
   }
 
+  @override
   Future<void> register({
     required String email,
     required String password,
@@ -59,11 +63,13 @@ class AuthService {
     }
   }
 
+  @override
   Future<UserRole> resolveRole(String uid) async {
     final doc = await _firestore.collection('users').doc(uid).get();
     final role = (doc.data()?['role'] ?? 'passenger').toString();
     return userRoleFromString(role);
   }
 
+  @override
   Future<void> signOut() => _auth.signOut();
 }

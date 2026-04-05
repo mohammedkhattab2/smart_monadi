@@ -2,9 +2,10 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:smart_monadi/features/location/data/models/bus_location_model.dart';
 import 'package:smart_monadi/features/location/domain/entities/bus_location.dart';
+import 'package:smart_monadi/features/location/domain/repositories/bus_location_repository.dart';
 
-class BusLocationRepository {
-  BusLocationRepository({FirebaseFirestore? firestore})
+class FirestoreBusLocationRepository implements BusLocationRepository {
+  FirestoreBusLocationRepository({FirebaseFirestore? firestore})
     : _firestore = firestore ?? FirebaseFirestore.instance;
 
   final FirebaseFirestore _firestore;
@@ -12,6 +13,7 @@ class BusLocationRepository {
   DocumentReference<Map<String, dynamic>> get _docRef =>
       _firestore.collection('bus_live').doc('current');
 
+  @override
   Stream<BusLocation?> watchBusLocation() {
     return _docRef.snapshots().map((snapshot) {
       final data = snapshot.data();
@@ -22,6 +24,7 @@ class BusLocationRepository {
     });
   }
 
+  @override
   Future<void> pushCurrentLocation(Position position) {
     final model = BusLocationModel(
       latitude: position.latitude,

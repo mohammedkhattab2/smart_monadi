@@ -1,23 +1,31 @@
 import 'dart:async';
 
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:easy_localization/easy_localization.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:smart_monadi/app/design/app_primitives.dart';
 import 'package:smart_monadi/app/design/design_tokens.dart';
-import 'package:smart_monadi/features/location/data/repositories/bus_location_repository.dart';
 import 'package:smart_monadi/features/location/domain/entities/bus_location.dart';
-import 'package:smart_monadi/features/passenger/data/repositories/passenger_repository.dart';
+import 'package:smart_monadi/features/location/domain/repositories/bus_location_repository.dart';
 import 'package:smart_monadi/features/passenger/domain/entities/passenger.dart';
+import 'package:smart_monadi/features/passenger/domain/entities/passenger_timeline_event.dart';
+import 'package:smart_monadi/features/passenger/domain/repositories/passenger_repository.dart';
+import 'package:smart_monadi/features/passenger/domain/usecases/watch_passenger_profile_use_case.dart';
+import 'package:smart_monadi/features/passenger/domain/usecases/watch_passenger_timeline_use_case.dart';
 import 'package:smart_monadi/features/passenger/presentation/viewmodels/passenger_form_view_model.dart';
 
 class PassengerScreen extends StatefulWidget {
-  const PassengerScreen({super.key, required this.repository});
+  const PassengerScreen({
+    super.key,
+    required this.repository,
+    required this.locationRepository,
+    required this.currentUserId,
+  });
 
   final PassengerRepository repository;
+  final BusLocationRepository locationRepository;
+  final String currentUserId;
 
   @override
   State<PassengerScreen> createState() => _PassengerScreenState();
@@ -25,7 +33,8 @@ class PassengerScreen extends StatefulWidget {
 
 class _PassengerScreenState extends State<PassengerScreen> {
   late final PassengerFormViewModel _viewModel;
-  final _locationRepository = BusLocationRepository();
+  late final WatchPassengerProfileUseCase _watchPassengerProfileUseCase;
+  late final WatchPassengerTimelineUseCase _watchPassengerTimelineUseCase;
   final _formKey = GlobalKey<FormState>();
   final _nameController = TextEditingController();
   final _phoneController = TextEditingController();
@@ -34,8 +43,7 @@ class _PassengerScreenState extends State<PassengerScreen> {
   final _returnTimeController = TextEditingController();
   final _latitudeController = TextEditingController();
   final _longitudeController = TextEditingController();
-  StreamSubscription<QuerySnapshot<Map<String, dynamic>>>?
-  _timelineSubscription;
+  StreamSubscription<List<PassengerTimelineEvent>>? _timelineSubscription;
   Timer? _timelineSnackDebounce;
   final Set<String> _seenTimelineEventIds = <String>{};
   final List<String> _pendingTimelineLabels = <String>[];
@@ -46,7 +54,13 @@ class _PassengerScreenState extends State<PassengerScreen> {
   @override
   void initState() {
     super.initState();
-    _viewModel = PassengerFormViewModel(widget.repository);
+    _viewModel = PassengerFormViewModel.fromRepository(widget.repository);
+    _watchPassengerProfileUseCase = WatchPassengerProfileUseCase(
+      widget.repository,
+    );
+    _watchPassengerTimelineUseCase = WatchPassengerTimelineUseCase(
+      widget.repository,
+    );
     _listenForNewTimelineEvents();
   }
 
@@ -66,39 +80,30 @@ class _PassengerScreenState extends State<PassengerScreen> {
   }
 
   void _listenForNewTimelineEvents() {
-    final uid = FirebaseAuth.instance.currentUser?.uid;
-    if (uid == null) {
-      return;
-    }
-
-    _timelineSubscription = FirebaseFirestore.instance
-        .collection('pickup_logs')
-        .where('passengerId', isEqualTo: uid)
-        .orderBy('createdAt', descending: true)
-        .limit(5)
-        .snapshots()
-        .listen((snapshot) {
+    _timelineSubscription =
+        _watchPassengerTimelineUseCase(
+          passengerId: widget.currentUserId,
+          limit: 5,
+        ).listen((events) {
           if (!_timelinePrimed) {
-            for (final doc in snapshot.docs) {
-              _seenTimelineEventIds.add(doc.id);
+            for (final event in events) {
+              _seenTimelineEventIds.add(event.id);
             }
             _timelinePrimed = true;
             return;
           }
 
-          for (final doc in snapshot.docs.reversed) {
-            if (_seenTimelineEventIds.contains(doc.id)) {
+          for (final event in events.reversed) {
+            if (_seenTimelineEventIds.contains(event.id)) {
               continue;
             }
-            _seenTimelineEventIds.add(doc.id);
+            _seenTimelineEventIds.add(event.id);
 
             if (!mounted) {
               return;
             }
 
-            final data = doc.data();
-            final type = (data['type'] ?? '').toString();
-            final label = _timelineEventLabel(type);
+            final label = _timelineEventLabel(event.type);
             _queueTimelineUpdateNotification(label);
           }
         });
@@ -182,13 +187,8 @@ class _PassengerScreenState extends State<PassengerScreen> {
       return;
     }
 
-    final uid = FirebaseAuth.instance.currentUser?.uid;
-    if (uid == null) {
-      return;
-    }
-
     final success = await _viewModel.savePassenger(
-      id: uid,
+      id: widget.currentUserId,
       name: _nameController.text.trim(),
       phone: _phoneController.text.trim(),
       address: _addressController.text.trim(),
@@ -210,37 +210,16 @@ class _PassengerScreenState extends State<PassengerScreen> {
   }
 
   Stream<Passenger?> _passengerProfileStream() {
-    final uid = FirebaseAuth.instance.currentUser?.uid;
-    if (uid == null) {
-      return const Stream<Passenger?>.empty();
-    }
-    return widget.repository.watchPassengerById(uid);
+    return _watchPassengerProfileUseCase(widget.currentUserId);
   }
 
-  Stream<QuerySnapshot<Map<String, dynamic>>> _passengerLogsStream() {
-    final uid = FirebaseAuth.instance.currentUser?.uid;
-    if (uid == null) {
-      return const Stream<QuerySnapshot<Map<String, dynamic>>>.empty();
-    }
-
+  Stream<List<PassengerTimelineEvent>> _passengerLogsStream() {
     final since = _timelineSince();
-
-    if (since == null) {
-      return FirebaseFirestore.instance
-          .collection('pickup_logs')
-          .where('passengerId', isEqualTo: uid)
-          .orderBy('createdAt', descending: true)
-          .limit(12)
-          .snapshots();
-    }
-
-    return FirebaseFirestore.instance
-        .collection('pickup_logs')
-        .where('passengerId', isEqualTo: uid)
-        .where('createdAt', isGreaterThanOrEqualTo: Timestamp.fromDate(since))
-        .orderBy('createdAt', descending: true)
-        .limit(12)
-        .snapshots();
+    return _watchPassengerTimelineUseCase(
+      passengerId: widget.currentUserId,
+      since: since,
+      limit: 12,
+    );
   }
 
   DateTime? _timelineSince() {
@@ -280,12 +259,12 @@ class _PassengerScreenState extends State<PassengerScreen> {
     return Icons.info_outline;
   }
 
-  String _formatTimelineTime(dynamic value) {
-    if (value is! Timestamp) {
+  String _formatTimelineTime(DateTime? value) {
+    if (value == null) {
       return '--';
     }
 
-    final date = value.toDate().toLocal();
+    final date = value;
     final y = date.year;
     final m = date.month.toString().padLeft(2, '0');
     final d = date.day.toString().padLeft(2, '0');
@@ -349,7 +328,7 @@ class _PassengerScreenState extends State<PassengerScreen> {
 
                             return _PassengerLiveStatusCard(
                               passenger: passenger,
-                              locationRepository: _locationRepository,
+                              locationRepository: widget.locationRepository,
                               estimateEtaMinutes: _estimateEtaMinutes,
                             );
                           },
@@ -453,7 +432,7 @@ class _PassengerScreenState extends State<PassengerScreen> {
                           },
                         ),
                         SizedBox(height: AppSpacing.xs.h),
-                        StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+                        StreamBuilder<List<PassengerTimelineEvent>>(
                           stream: _passengerLogsStream(),
                           builder: (context, snapshot) {
                             if (snapshot.connectionState ==
@@ -474,21 +453,20 @@ class _PassengerScreenState extends State<PassengerScreen> {
                               );
                             }
 
-                            final docs = snapshot.data?.docs ?? const [];
-                            if (docs.isEmpty) {
+                            final events =
+                                snapshot.data ??
+                                const <PassengerTimelineEvent>[];
+                            if (events.isEmpty) {
                               return Text('passenger.timeline_empty'.tr());
                             }
 
                             return Column(
-                              children: docs
-                                  .map((doc) {
-                                    final data = doc.data();
-                                    final type = (data['type'] ?? '')
-                                        .toString();
-                                    final message = (data['message'] ?? '')
-                                        .toString();
+                              children: events
+                                  .map((event) {
+                                    final type = event.type;
+                                    final message = event.message;
                                     final when = _formatTimelineTime(
-                                      data['createdAt'],
+                                      event.createdAt,
                                     );
 
                                     return AppTimelineTile(

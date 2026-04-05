@@ -1,7 +1,8 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:smart_monadi/features/automation/domain/repositories/trip_event_repository.dart';
 
-class TripEventRepository {
-  TripEventRepository({FirebaseFirestore? firestore})
+class FirestoreTripEventRepository implements TripEventRepository {
+  FirestoreTripEventRepository({FirebaseFirestore? firestore})
     : _firestore = firestore ?? FirebaseFirestore.instance;
 
   final FirebaseFirestore _firestore;
@@ -12,6 +13,7 @@ class TripEventRepository {
   CollectionReference<Map<String, dynamic>> get _smsOutboxRef =>
       _firestore.collection('sms_outbox');
 
+  @override
   Future<void> addPickupLog({
     required String passengerId,
     required String passengerPhone,
@@ -29,6 +31,7 @@ class TripEventRepository {
     });
   }
 
+  @override
   Future<void> queueSms({
     required String passengerId,
     required String toPhone,

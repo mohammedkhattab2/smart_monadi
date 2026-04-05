@@ -1,10 +1,17 @@
 import 'package:flutter/foundation.dart';
-import 'package:smart_monadi/features/passenger/data/repositories/passenger_repository.dart';
+import 'package:smart_monadi/features/passenger/domain/repositories/passenger_repository.dart';
+import 'package:smart_monadi/features/passenger/domain/usecases/save_passenger_profile_use_case.dart';
 
 class PassengerFormViewModel extends ChangeNotifier {
-  PassengerFormViewModel(this._repository);
+  PassengerFormViewModel(this._savePassengerProfileUseCase);
 
-  final PassengerRepository _repository;
+  factory PassengerFormViewModel.fromRepository(
+    PassengerRepository repository,
+  ) {
+    return PassengerFormViewModel(SavePassengerProfileUseCase(repository));
+  }
+
+  final SavePassengerProfileUseCase _savePassengerProfileUseCase;
 
   bool _isSaving = false;
   bool get isSaving => _isSaving;
@@ -27,7 +34,7 @@ class PassengerFormViewModel extends ChangeNotifier {
     notifyListeners();
 
     try {
-      await _repository.upsertPassenger(
+      await _savePassengerProfileUseCase(
         id: id,
         name: name,
         phone: phone,

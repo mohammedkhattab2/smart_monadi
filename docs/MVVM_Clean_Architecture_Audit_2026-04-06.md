@@ -123,3 +123,93 @@ Can it become 100% with current codebase?
 ## Final Conclusion
 The project is functionally strong and well-progressed, but architecture is **not yet strict-clean**.
 To claim "100% MVVM/Clean Architecture", the listed dependency-direction and domain-use-case gaps must be refactored.
+
+---
+
+## Progress Update (Executed)
+
+Implemented in this round:
+
+1. Driver refactor (step 1)
+- Moved core driver presentation logic out of `driver_screen.dart` into `DriverLiveViewModel`:
+   - ETA computation and passenger sorting
+   - status key/priority rules
+   - manual pickup orchestration (mark pickup + log + SMS)
+   - schedule-change tracking/alerts
+- `driver_screen.dart` now behaves more as a view layer and delegates logic to ViewModel.
+
+2. Use-cases added for Auth, Passenger, Operations (step 2)
+- Auth use-cases: SignIn/Register/ResolveRole/SignOut/WatchAuthState.
+- Passenger use-cases: SavePassengerProfile/WatchPassengerProfile/WatchPassengerTimeline.
+- Operations use-cases: EnqueueTestSms/RequeueDeadLetter/WatchMetrics/WatchEvents/WatchDeadLetters.
+- Presentation wiring updated to consume these use-cases in key screens/viewmodels.
+
+3. Composition Root introduced (step 3)
+- Added centralized dependency container: `lib/app/di/app_dependencies.dart`.
+- Implementations are now composed in one place and injected downward:
+   - `SmartMonadiApp` -> `AuthGateScreen` -> `HomeShell` -> feature screens/viewmodels.
+- Reduced direct construction of repositories/services inside screens.
+
+Validation after changes:
+- `flutter analyze`: clean
+- `flutter test`: pass
+
+Additional continuation executed:
+- Driver feature automation was further extracted into dedicated use-cases:
+   - `CalculateEtaUseCase`
+   - `SortPassengersUseCase`
+   - `ManualMarkPickedUpUseCase`
+   - `RunGeofenceAutomationUseCase`
+- `DriverLiveViewModel` now orchestrates these use-cases instead of owning full automation business logic inline.
+
+Latest continuation (strict-clean pass):
+- Introduced Automation domain contract for events/SMS queue:
+   - `TripEventRepository` (domain abstraction)
+   - `FirestoreTripEventRepository` now implements it
+- Updated Driver use-cases to depend on domain `TripEventRepository` abstraction (removed direct data dependency).
+- Added dedicated tests for driver automation use-cases:
+   - `ManualMarkPickedUpUseCase`
+   - `RunGeofenceAutomationUseCase`
+- Introduced Location domain abstractions:
+   - `BusLocationRepository` (domain)
+   - `DeviceLocationService` (domain)
+   - concrete implementations now: `FirestoreBusLocationRepository`, `GeolocatorDeviceLocationService`
+- Updated `AppDependencies`, `DriverLiveViewModel`, and `PassengerScreen` wiring to use location abstractions.
+- Presentation-layer scan for `features/.../data/...` imports now returns no matches.
+
+Validation after latest continuation:
+- `flutter analyze`: clean
+- targeted unit tests: pass (11/11)
+
+Latest testing extension:
+- Added `DriverLiveViewModel` behavior tests covering:
+   - status keys/priorities
+   - schedule alerts generation
+   - manual pickup success/failure state handling
+   - tracking permission denied/error path
+   - sorting delegation behavior
+- Extended `startTracking` success-path tests to assert automation side effects when bus/passenger streams emit:
+   - approaching flow triggers geofence update + event + SMS
+   - pickup-radius flow triggers markPickedUp + event + SMS
+- Added startTracking plumbing/concurrency safety tests:
+   - position stream emits are forwarded to `pushCurrentLocation`
+   - `_isAutomating` gate prevents re-entrant automation while an automation run is still pending
+- Added resilience/limits tests for `DriverLiveViewModel`:
+   - dispose safety: stream emissions after dispose do not trigger side effects
+   - schedule alerts cap remains bounded to latest 8 entries
+- Added idempotency test for `startTracking`:
+   - calling `startTracking` twice does not create duplicate subscriptions
+   - position emission still produces a single `pushCurrentLocation` side effect
+- Added tracking-recovery test:
+   - `trackingError` is cleared after a later successful `startTracking`
+- Expanded Operations ViewModel tests:
+   - empty phone validation
+   - dead-letter requeue missing-phone validation
+   - dead-letter requeue failure handling and in-progress cleanup
+   - time filter `all` behavior and template setter state update
+- Added Passenger Form ViewModel tests:
+   - successful save path
+   - concurrent-save guard while first save is still in progress
+- Validation now:
+   - full test suite: pass (34/34)
+   - `flutter analyze`: clean

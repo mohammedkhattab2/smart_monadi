@@ -1,9 +1,11 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:smart_monadi/features/passenger/data/models/passenger_model.dart';
 import 'package:smart_monadi/features/passenger/domain/entities/passenger.dart';
+import 'package:smart_monadi/features/passenger/domain/entities/passenger_timeline_event.dart';
+import 'package:smart_monadi/features/passenger/domain/repositories/passenger_repository.dart';
 
-class PassengerRepository {
-  PassengerRepository({FirebaseFirestore? firestore})
+class FirestorePassengerRepository implements PassengerRepository {
+  FirestorePassengerRepository({FirebaseFirestore? firestore})
     : _firestore = firestore ?? FirebaseFirestore.instance;
 
   final FirebaseFirestore _firestore;
@@ -11,6 +13,7 @@ class PassengerRepository {
   CollectionReference<Map<String, dynamic>> get _passengersRef =>
       _firestore.collection('passengers');
 
+  @override
   Stream<List<Passenger>> watchPassengers() {
     return _passengersRef
         .orderBy('updatedAt', descending: true)
@@ -23,6 +26,7 @@ class PassengerRepository {
         );
   }
 
+  @override
   Stream<Passenger?> watchPassengerById(String id) {
     return _passengersRef.doc(id).snapshots().map((snapshot) {
       if (!snapshot.exists) {
@@ -32,6 +36,46 @@ class PassengerRepository {
     });
   }
 
+  @override
+  Stream<List<PassengerTimelineEvent>> watchPassengerTimeline({
+    required String passengerId,
+    DateTime? since,
+    int limit = 12,
+  }) {
+    Query<Map<String, dynamic>> query = _firestore
+        .collection('pickup_logs')
+        .where('passengerId', isEqualTo: passengerId)
+        .orderBy('createdAt', descending: true)
+        .limit(limit);
+
+    if (since != null) {
+      query = _firestore
+          .collection('pickup_logs')
+          .where('passengerId', isEqualTo: passengerId)
+          .where('createdAt', isGreaterThanOrEqualTo: Timestamp.fromDate(since))
+          .orderBy('createdAt', descending: true)
+          .limit(limit);
+    }
+
+    return query.snapshots().map((snapshot) {
+      return snapshot.docs
+          .map((doc) {
+            final data = doc.data();
+            final createdAtRaw = data['createdAt'];
+            return PassengerTimelineEvent(
+              id: doc.id,
+              type: (data['type'] ?? '').toString(),
+              message: (data['message'] ?? '').toString(),
+              createdAt: createdAtRaw is Timestamp
+                  ? createdAtRaw.toDate().toLocal()
+                  : null,
+            );
+          })
+          .toList(growable: false);
+    });
+  }
+
+  @override
   Future<void> upsertPassenger({
     required String id,
     required String name,
@@ -59,6 +103,7 @@ class PassengerRepository {
         .set(model.toFirestore(), SetOptions(merge: true));
   }
 
+  @override
   Future<void> updateGeofenceState({
     required String passengerId,
     required String geofenceState,
@@ -71,6 +116,7 @@ class PassengerRepository {
     }, SetOptions(merge: true));
   }
 
+  @override
   Future<void> markPickedUp({
     required String passengerId,
     double? distanceMeters,

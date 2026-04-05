@@ -1,6 +1,8 @@
 import 'package:geolocator/geolocator.dart';
+import 'package:smart_monadi/features/location/domain/services/device_location_service.dart';
 
-class DeviceLocationService {
+class GeolocatorDeviceLocationService implements DeviceLocationService {
+  @override
   Future<bool> ensurePermission() async {
     final serviceEnabled = await Geolocator.isLocationServiceEnabled();
     if (!serviceEnabled) {
@@ -20,6 +22,7 @@ class DeviceLocationService {
     return true;
   }
 
+  @override
   Stream<Position> watchPosition() {
     const settings = LocationSettings(
       accuracy: LocationAccuracy.high,
