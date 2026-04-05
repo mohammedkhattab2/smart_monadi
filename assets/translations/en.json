@@ -1,0 +1,150 @@
+{
+  "app": {
+    "name": "Smart Monadi"
+  },
+  "tabs": {
+    "passenger": "Passenger",
+    "driver": "Driver",
+    "operations": "Operations"
+  },
+  "actions": {
+    "save": "Save",
+    "switch_language": "AR",
+    "switch_theme": "Theme",
+    "logout": "Logout",
+    "retry": "Retry"
+  },
+  "states": {
+    "empty_title": "Nothing to show",
+    "error_title": "Something went wrong",
+    "error_message": "Could not load data. Please try again."
+  },
+  "auth": {
+    "title": "Smart Monadi Access",
+    "sign_in": "Sign In",
+    "register": "Create Account",
+    "name": "Name",
+    "email": "Email",
+    "password": "Password",
+    "role": "Account Type",
+    "role_driver": "Driver",
+    "role_passenger": "Passenger",
+    "passenger_phone": "Passenger phone",
+    "passenger_address": "Passenger address",
+    "passenger_pickup_time": "Go time (HH:mm)",
+    "passenger_return_time": "Return time (HH:mm)",
+    "error_generic": "Authentication failed. Please check your data.",
+    "error_passenger_required": "Please complete all passenger profile fields.",
+    "error_email_invalid": "Please enter a valid email address.",
+    "error_password_short": "Password must be at least 6 characters.",
+    "error_name_required": "Please enter your name.",
+    "error_time_invalid": "Please enter valid time in HH:mm format."
+  },
+  "passenger": {
+    "title": "Passenger Setup",
+    "name": "Name",
+    "phone": "Phone",
+    "address": "Address",
+    "pickup_time": "Pickup Time (HH:mm)",
+    "return_time": "Return Time (HH:mm)",
+    "latitude": "Latitude",
+    "longitude": "Longitude",
+    "coordinates_hint": "Optional now, required later for ETA accuracy",
+    "live_title": "Bus Live Status",
+    "live_profile_hint": "Complete and save your profile to activate live tracking.",
+    "timeline_title": "Trip Timeline",
+    "timeline_filter_label": "Timeline Range",
+    "timeline_filter_24h": "Last 24 hours",
+    "timeline_filter_7d": "Last 7 days",
+    "timeline_filter_all": "All updates",
+    "timeline_empty": "No trip updates yet",
+    "timeline_event_approaching": "Bus is approaching",
+    "timeline_event_picked_auto": "Pickup confirmed automatically",
+    "timeline_event_picked_manual": "Pickup confirmed by driver",
+    "timeline_when": "When",
+    "timeline_new_update": "New trip update: {}",
+    "timeline_new_updates": "{} new trip updates: {}",
+    "id_hint": "Use phone as unique ID",
+    "saved": "Passenger saved and synced",
+    "validation": "Please complete all fields"
+  },
+  "driver": {
+    "title": "Live Passenger Queue",
+    "empty": "No passengers yet",
+    "map_title": "Live Bus Location",
+    "waiting_location": "Waiting for bus location...",
+    "location_error": "Location permission denied or disabled",
+    "eta_format": "ETA: {} min",
+    "eta_unavailable": "ETA: --",
+    "status_waiting": "Status: Waiting",
+    "status_approaching": "Status: Approaching",
+    "status_picked_up": "Status: Picked up",
+    "call": "Call passenger",
+    "call_failed": "Unable to start a phone call",
+    "manual_pickup": "Mark picked",
+    "manual_pickup_confirm_title": "Confirm pickup",
+    "manual_pickup_confirm_body": "Mark {} as picked up now?",
+    "manual_pickup_done": "Passenger marked as picked up",
+    "manual_pickup_failed": "Failed to mark passenger as picked up",
+    "schedule_updates_title": "Recent Schedule Updates",
+    "alert_pickup": "Go",
+    "alert_return": "Return",
+    "cancel": "Cancel",
+    "confirm": "Confirm"
+  },
+  "ops": {
+    "title": "SMS Operations Dashboard",
+    "recent_events": "Recent Delivery Events",
+    "dead_letter": "Dead Letter Queue",
+    "empty_events": "No delivery events yet",
+    "empty_dead_letter": "No dead-letter records",
+    "reason": "Reason",
+    "when": "When",
+    "error_category": "Error Category",
+    "attempts": "Attempts",
+    "filter": {
+      "label": "Event Type Filter",
+      "all": "All",
+      "sent": "Sent",
+      "failed_retry": "Failed (Will Retry)",
+      "failed_permanent": "Failed (Permanent)",
+      "requeued": "Requeued Manually"
+    },
+    "time_filter": {
+      "label": "Time Range",
+      "last_1h": "Last 1 hour",
+      "last_24h": "Last 24 hours",
+      "last_7d": "Last 7 days",
+      "all": "All time"
+    },
+    "copy": {
+      "action": "Copy message id",
+      "copied": "Message id copied"
+    },
+    "retry": {
+      "action": "Requeue",
+      "success": "Message requeued successfully",
+      "failed": "Failed to requeue message",
+      "missing_phone": "Cannot requeue: missing destination phone"
+    },
+    "metrics": {
+      "sent": "Sent",
+      "failed": "Failed",
+      "failed_permanent": "Dead"
+    },
+    "test": {
+      "title": "Manual SMS Test",
+      "phone": "Phone (E.164)",
+      "name": "Name",
+      "pickup_time": "Pickup Time",
+      "template": "Template",
+      "template_arriving": "Arriving soon",
+      "template_arrived": "Arrived now",
+      "enqueue": "Enqueue test SMS",
+      "enqueued": "Test SMS queued successfully",
+      "validation_phone": "Please enter recipient phone",
+      "validation_phone_format": "Phone must be valid E.164 format (e.g. +201234567890).",
+      "validation_pickup_time": "Pickup time must be in HH:mm format."
+    }
+  }
+}

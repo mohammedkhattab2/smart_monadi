@@ -1,0 +1,28 @@
+{
+	"flutter": {
+		"platforms": {
+			"android": {
+				"default": {
+					"projectId": "smartmonadi",
+					"appId": "1:123305043150:android:6090d105f9b0438d9e1c9f",
+					"fileOutput": "android/app/google-services.json"
+				}
+			},
+			"dart": {
+				"lib/firebase_options.dart": {
+					"projectId": "smartmonadi",
+					"configurations": {
+						"android": "1:123305043150:android:6090d105f9b0438d9e1c9f",
+						"ios": "1:123305043150:ios:7383ce7a491f62d59e1c9f"
+					}
+				}
+			}
+		}
+	},
+	"functions": {
+		"source": "functions"
+	},
+	"firestore": {
+		"indexes": "firestore.indexes.json"
+	}
+}

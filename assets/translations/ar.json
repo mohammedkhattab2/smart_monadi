@@ -1,0 +1,150 @@
+{
+  "app": {
+    "name": "سمارت منادي"
+  },
+  "tabs": {
+    "passenger": "الراكب",
+    "driver": "السائق",
+    "operations": "التشغيل"
+  },
+  "actions": {
+    "save": "حفظ",
+    "switch_language": "EN",
+    "switch_theme": "المظهر",
+    "logout": "تسجيل الخروج",
+    "retry": "إعادة المحاولة"
+  },
+  "states": {
+    "empty_title": "لا يوجد محتوى",
+    "error_title": "حدث خطأ",
+    "error_message": "تعذر تحميل البيانات. حاول مرة أخرى."
+  },
+  "auth": {
+    "title": "الدخول إلى سمارت منادي",
+    "sign_in": "تسجيل الدخول",
+    "register": "إنشاء حساب",
+    "name": "الاسم",
+    "email": "البريد الإلكتروني",
+    "password": "كلمة المرور",
+    "role": "نوع الحساب",
+    "role_driver": "سائق",
+    "role_passenger": "راكب",
+    "passenger_phone": "هاتف الراكب",
+    "passenger_address": "عنوان الراكب",
+    "passenger_pickup_time": "وقت الذهاب (HH:mm)",
+    "passenger_return_time": "وقت العودة (HH:mm)",
+    "error_generic": "فشل التحقق من الحساب. يرجى مراجعة البيانات.",
+    "error_passenger_required": "يرجى إكمال كل بيانات الراكب المطلوبة.",
+    "error_email_invalid": "يرجى إدخال بريد إلكتروني صحيح.",
+    "error_password_short": "كلمة المرور يجب أن تكون 6 أحرف على الأقل.",
+    "error_name_required": "يرجى إدخال الاسم.",
+    "error_time_invalid": "يرجى إدخال وقت صحيح بصيغة HH:mm."
+  },
+  "passenger": {
+    "title": "إعداد الراكب",
+    "name": "الاسم",
+    "phone": "الهاتف",
+    "address": "العنوان",
+    "pickup_time": "وقت الاستلام (HH:mm)",
+    "return_time": "وقت العودة (HH:mm)",
+    "latitude": "خط العرض",
+    "longitude": "خط الطول",
+    "coordinates_hint": "اختياري حاليا ومطلوب لاحقا لدقة ETA",
+    "live_title": "حالة الباص المباشرة",
+    "live_profile_hint": "أكمل بياناتك واحفظها لتفعيل المتابعة المباشرة.",
+    "timeline_title": "سجل الرحلة",
+    "timeline_filter_label": "نطاق السجل",
+    "timeline_filter_24h": "آخر 24 ساعة",
+    "timeline_filter_7d": "آخر 7 أيام",
+    "timeline_filter_all": "كل التحديثات",
+    "timeline_empty": "لا توجد تحديثات رحلة بعد",
+    "timeline_event_approaching": "الباص في حالة اقتراب",
+    "timeline_event_picked_auto": "تم تأكيد الاستلام تلقائيا",
+    "timeline_event_picked_manual": "تم تأكيد الاستلام بواسطة السائق",
+    "timeline_when": "الوقت",
+    "timeline_new_update": "تحديث جديد للرحلة: {}",
+    "timeline_new_updates": "{} تحديثات جديدة للرحلة: {}",
+    "id_hint": "استخدم رقم الهاتف كمعرف",
+    "saved": "تم حفظ الراكب والمزامنة",
+    "validation": "يرجى إكمال كل الحقول"
+  },
+  "driver": {
+    "title": "قائمة الركاب الحية",
+    "empty": "لا يوجد ركاب بعد",
+    "map_title": "موقع الباص المباشر",
+    "waiting_location": "جاري انتظار موقع الباص...",
+    "location_error": "تم رفض إذن الموقع أو الخدمة متوقفة",
+    "eta_format": "الوصول خلال: {} دقيقة",
+    "eta_unavailable": "الوصول خلال: --",
+    "status_waiting": "الحالة: انتظار",
+    "status_approaching": "الحالة: اقتراب",
+    "status_picked_up": "الحالة: تم الاستلام",
+    "call": "اتصال بالراكب",
+    "call_failed": "تعذر بدء الاتصال",
+    "manual_pickup": "تأكيد الاستلام",
+    "manual_pickup_confirm_title": "تأكيد الاستلام",
+    "manual_pickup_confirm_body": "هل تريد تأكيد استلام {} الآن؟",
+    "manual_pickup_done": "تم تأكيد استلام الراكب",
+    "manual_pickup_failed": "فشل تأكيد استلام الراكب",
+    "schedule_updates_title": "آخر تعديلات المواعيد",
+    "alert_pickup": "الذهاب",
+    "alert_return": "العودة",
+    "cancel": "إلغاء",
+    "confirm": "تأكيد"
+  },
+  "ops": {
+    "title": "لوحة تشغيل الرسائل",
+    "recent_events": "أحدث أحداث الإرسال",
+    "dead_letter": "سجل الفشل النهائي",
+    "empty_events": "لا توجد أحداث إرسال بعد",
+    "empty_dead_letter": "لا توجد سجلات فشل نهائي",
+    "reason": "السبب",
+    "when": "الوقت",
+    "error_category": "تصنيف الخطأ",
+    "attempts": "المحاولات",
+    "filter": {
+      "label": "تصفية نوع الحدث",
+      "all": "الكل",
+      "sent": "تم الإرسال",
+      "failed_retry": "فشل (سيعاد المحاولة)",
+      "failed_permanent": "فشل نهائي",
+      "requeued": "إعادة إدراج يدوية"
+    },
+    "time_filter": {
+      "label": "النطاق الزمني",
+      "last_1h": "آخر ساعة",
+      "last_24h": "آخر 24 ساعة",
+      "last_7d": "آخر 7 أيام",
+      "all": "كل الوقت"
+    },
+    "copy": {
+      "action": "نسخ معرف الرسالة",
+      "copied": "تم نسخ معرف الرسالة"
+    },
+    "retry": {
+      "action": "إعادة إدراج",
+      "success": "تمت إعادة إدراج الرسالة بنجاح",
+      "failed": "فشلت إعادة إدراج الرسالة",
+      "missing_phone": "لا يمكن إعادة الإدراج لعدم وجود رقم مستلم"
+    },
+    "metrics": {
+      "sent": "تم الإرسال",
+      "failed": "فشل",
+      "failed_permanent": "نهائي"
+    },
+    "test": {
+      "title": "اختبار SMS يدوي",
+      "phone": "رقم الهاتف (E.164)",
+      "name": "الاسم",
+      "pickup_time": "وقت الاستلام",
+      "template": "القالب",
+      "template_arriving": "اقتراب",
+      "template_arrived": "وصول الآن",
+      "enqueue": "إضافة رسالة اختبار",
+      "enqueued": "تمت إضافة رسالة الاختبار بنجاح",
+      "validation_phone": "يرجى إدخال رقم المستلم",
+      "validation_phone_format": "رقم الهاتف يجب أن يكون بصيغة E.164 مثل +201234567890.",
+      "validation_pickup_time": "وقت الاستلام يجب أن يكون بصيغة HH:mm."
+    }
+  }
+}
