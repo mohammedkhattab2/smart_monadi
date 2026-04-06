@@ -36,7 +36,53 @@ void main() {
   });
 
   group('RunGeofenceAutomationUseCase', () {
-    test('approaching passenger updates state and logs once', () async {
+    test(
+      'approaching passenger updates state and logs once in ETA window',
+      () async {
+        final passengerRepository = _FakePassengerRepository();
+        final tripEventRepository = _FakeTripEventRepository();
+        final useCase = RunGeofenceAutomationUseCase(
+          passengerRepository: passengerRepository,
+          tripEventRepository: tripEventRepository,
+        );
+
+        final now = DateTime.now();
+        final currentMinute = now.hour * 60 + now.minute;
+        final pickupMinute = currentMinute + 5;
+        final pickupHourText = ((pickupMinute ~/ 60) % 24).toString().padLeft(
+          2,
+          '0',
+        );
+        final pickupMinuteText = (pickupMinute % 60).toString().padLeft(2, '0');
+
+        const bus = BusLocation(
+          latitude: 0.0,
+          longitude: 0.0,
+          updatedAtMillis: 1,
+        );
+        final passenger = Passenger(
+          id: 'p1',
+          name: 'Ali',
+          phone: '+201111111111',
+          address: 'Cairo',
+          pickupTime: '$pickupHourText:$pickupMinuteText',
+          latitude: 0.02,
+          longitude: 0.0,
+          updatedAtMillis: 1,
+        );
+
+        await useCase(busLocation: bus, passengers: [passenger]);
+        await useCase(busLocation: bus, passengers: [passenger]);
+
+        expect(passengerRepository.updateGeofenceCalls, 2);
+        expect(passengerRepository.lastGeofenceState, 'approaching');
+        expect(tripEventRepository.pickupLogCalls, 1);
+        expect(tripEventRepository.smsCalls, 1);
+        expect(tripEventRepository.lastSmsTemplate, 'arriving_soon');
+      },
+    );
+
+    test('pickup happens after leaving pickup zone', () async {
       final passengerRepository = _FakePassengerRepository();
       final tripEventRepository = _FakeTripEventRepository();
       final useCase = RunGeofenceAutomationUseCase(
@@ -44,61 +90,50 @@ void main() {
         tripEventRepository: tripEventRepository,
       );
 
-      const bus = BusLocation(
+      final now = DateTime.now();
+      final currentMinute = now.hour * 60 + now.minute;
+      final pickupMinute = currentMinute + 4;
+      final pickupHourText = ((pickupMinute ~/ 60) % 24).toString().padLeft(
+        2,
+        '0',
+      );
+      final pickupMinuteText = (pickupMinute % 60).toString().padLeft(2, '0');
+
+      final nearBus = BusLocation(
         latitude: 0.0,
         longitude: 0.0,
-        updatedAtMillis: 1,
+        updatedAtMillis: now.millisecondsSinceEpoch,
       );
-      const passenger = Passenger(
-        id: 'p1',
-        name: 'Ali',
-        phone: '+201111111111',
-        address: 'Cairo',
-        pickupTime: '07:30',
-        latitude: 0.003,
+      final farBus = BusLocation(
+        latitude: 0.01,
         longitude: 0.0,
-        updatedAtMillis: 1,
+        updatedAtMillis: now
+            .add(const Duration(minutes: 1))
+            .millisecondsSinceEpoch,
       );
-
-      await useCase(busLocation: bus, passengers: const [passenger]);
-      await useCase(busLocation: bus, passengers: const [passenger]);
-
-      expect(passengerRepository.updateGeofenceCalls, 2);
-      expect(passengerRepository.lastGeofenceState, 'approaching');
-      expect(tripEventRepository.pickupLogCalls, 1);
-      expect(tripEventRepository.smsCalls, 1);
-      expect(tripEventRepository.lastSmsTemplate, 'arriving_soon');
-    });
-
-    test('pickup radius marks picked up and emits pickup events', () async {
-      final passengerRepository = _FakePassengerRepository();
-      final tripEventRepository = _FakeTripEventRepository();
-      final useCase = RunGeofenceAutomationUseCase(
-        passengerRepository: passengerRepository,
-        tripEventRepository: tripEventRepository,
-      );
-
-      const bus = BusLocation(
-        latitude: 0.0,
-        longitude: 0.0,
-        updatedAtMillis: 1,
-      );
-      const passenger = Passenger(
+      final passenger = Passenger(
         id: 'p2',
         name: 'Mona',
         phone: '+202222222222',
         address: 'Giza',
-        pickupTime: '08:00',
+        pickupTime: '$pickupHourText:$pickupMinuteText',
         latitude: 0.0005,
         longitude: 0.0,
         updatedAtMillis: 1,
       );
 
-      await useCase(busLocation: bus, passengers: const [passenger]);
+      await useCase(busLocation: nearBus, passengers: [passenger]);
+
+      expect(passengerRepository.markPickedUpCalls, 0);
+      expect(tripEventRepository.pickupLogCalls, 1);
+      expect(tripEventRepository.smsCalls, 1);
+      expect(tripEventRepository.lastSmsTemplate, 'arrival_now');
+
+      await useCase(busLocation: farBus, passengers: [passenger]);
 
       expect(passengerRepository.markPickedUpCalls, 1);
       expect(passengerRepository.lastMarkedPassengerId, 'p2');
-      expect(tripEventRepository.pickupLogCalls, 1);
+      expect(tripEventRepository.pickupLogCalls, 2);
       expect(tripEventRepository.smsCalls, 1);
       expect(tripEventRepository.lastSmsTemplate, 'arrival_now');
     });

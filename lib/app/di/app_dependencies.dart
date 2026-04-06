@@ -6,11 +6,13 @@ import 'package:smart_monadi/features/driver/domain/usecases/calculate_eta_use_c
 import 'package:smart_monadi/features/driver/domain/usecases/manual_mark_picked_up_use_case.dart';
 import 'package:smart_monadi/features/driver/domain/usecases/run_geofence_automation_use_case.dart';
 import 'package:smart_monadi/features/driver/domain/usecases/sort_passengers_use_case.dart';
+import 'package:smart_monadi/features/driver/data/services/http_python_eta_prediction_service.dart';
 import 'package:smart_monadi/features/driver/presentation/viewmodels/driver_live_view_model.dart';
 import 'package:smart_monadi/features/location/data/repositories/bus_location_repository.dart';
 import 'package:smart_monadi/features/location/data/services/device_location_service.dart';
 import 'package:smart_monadi/features/location/domain/repositories/bus_location_repository.dart';
 import 'package:smart_monadi/features/location/domain/services/device_location_service.dart';
+import 'package:smart_monadi/features/notifications/data/services/push_notification_service.dart';
 import 'package:smart_monadi/features/operations/data/repositories/firestore_operations_repository.dart';
 import 'package:smart_monadi/features/operations/domain/repositories/operations_repository.dart';
 import 'package:smart_monadi/features/operations/domain/usecases/enqueue_test_sms_use_case.dart';
@@ -33,6 +35,7 @@ class AppDependencies {
     required this.tripEventRepository,
     required this.locationRepository,
     required this.locationService,
+    required this.pushNotificationService,
   });
 
   factory AppDependencies.create() {
@@ -42,6 +45,7 @@ class AppDependencies {
     final tripEventRepository = FirestoreTripEventRepository();
     final locationRepository = FirestoreBusLocationRepository();
     final locationService = GeolocatorDeviceLocationService();
+    final pushNotificationService = PushNotificationService();
 
     return AppDependencies._(
       authRepository: authRepository,
@@ -50,6 +54,7 @@ class AppDependencies {
       tripEventRepository: tripEventRepository,
       locationRepository: locationRepository,
       locationService: locationService,
+      pushNotificationService: pushNotificationService,
     );
   }
 
@@ -59,10 +64,15 @@ class AppDependencies {
   final TripEventRepository tripEventRepository;
   final BusLocationRepository locationRepository;
   final DeviceLocationService locationService;
+  final PushNotificationService pushNotificationService;
 
   DriverLiveViewModel createDriverLiveViewModel() {
     const calculateEtaUseCase = CalculateEtaUseCase();
     final sortPassengersUseCase = SortPassengersUseCase(calculateEtaUseCase);
+    const etaServiceUrl = String.fromEnvironment('ETA_SERVICE_URL');
+    final etaPredictionService = HttpPythonEtaPredictionService(
+      baseUrl: etaServiceUrl,
+    );
     final manualMarkPickedUpUseCase = ManualMarkPickedUpUseCase(
       passengerRepository: passengerRepository,
       tripEventRepository: tripEventRepository,
@@ -70,6 +80,7 @@ class AppDependencies {
     final runGeofenceAutomationUseCase = RunGeofenceAutomationUseCase(
       passengerRepository: passengerRepository,
       tripEventRepository: tripEventRepository,
+      etaPredictionService: etaPredictionService,
     );
 
     return DriverLiveViewModel(

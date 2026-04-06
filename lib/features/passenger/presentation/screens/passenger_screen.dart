@@ -4,6 +4,7 @@ import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:smart_monadi/app/design/app_primitives.dart';
 import 'package:smart_monadi/app/design/design_tokens.dart';
 import 'package:smart_monadi/features/location/domain/entities/bus_location.dart';
@@ -14,6 +15,7 @@ import 'package:smart_monadi/features/passenger/domain/repositories/passenger_re
 import 'package:smart_monadi/features/passenger/domain/usecases/watch_passenger_profile_use_case.dart';
 import 'package:smart_monadi/features/passenger/domain/usecases/watch_passenger_timeline_use_case.dart';
 import 'package:smart_monadi/features/passenger/presentation/viewmodels/passenger_form_view_model.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class PassengerScreen extends StatefulWidget {
   const PassengerScreen({
@@ -41,8 +43,6 @@ class _PassengerScreenState extends State<PassengerScreen> {
   final _addressController = TextEditingController();
   final _pickupTimeController = TextEditingController();
   final _returnTimeController = TextEditingController();
-  final _latitudeController = TextEditingController();
-  final _longitudeController = TextEditingController();
   StreamSubscription<List<PassengerTimelineEvent>>? _timelineSubscription;
   Timer? _timelineSnackDebounce;
   final Set<String> _seenTimelineEventIds = <String>{};
@@ -50,6 +50,9 @@ class _PassengerScreenState extends State<PassengerScreen> {
   bool _timelinePrimed = false;
   String _timelineWindow = '24h';
   bool _didPrefill = false;
+  double? _selectedLatitude;
+  double? _selectedLongitude;
+  bool _isResolvingLocation = false;
 
   @override
   void initState() {
@@ -72,8 +75,6 @@ class _PassengerScreenState extends State<PassengerScreen> {
     _addressController.dispose();
     _pickupTimeController.dispose();
     _returnTimeController.dispose();
-    _latitudeController.dispose();
-    _longitudeController.dispose();
     _timelineSubscription?.cancel();
     _timelineSnackDebounce?.cancel();
     super.dispose();
@@ -84,29 +85,34 @@ class _PassengerScreenState extends State<PassengerScreen> {
         _watchPassengerTimelineUseCase(
           passengerId: widget.currentUserId,
           limit: 5,
-        ).listen((events) {
-          if (!_timelinePrimed) {
-            for (final event in events) {
-              _seenTimelineEventIds.add(event.id);
-            }
-            _timelinePrimed = true;
-            return;
-          }
-
-          for (final event in events.reversed) {
-            if (_seenTimelineEventIds.contains(event.id)) {
-              continue;
-            }
-            _seenTimelineEventIds.add(event.id);
-
-            if (!mounted) {
+        ).listen(
+          (events) {
+            if (!_timelinePrimed) {
+              for (final event in events) {
+                _seenTimelineEventIds.add(event.id);
+              }
+              _timelinePrimed = true;
               return;
             }
 
-            final label = _timelineEventLabel(event.type);
-            _queueTimelineUpdateNotification(label);
-          }
-        });
+            for (final event in events.reversed) {
+              if (_seenTimelineEventIds.contains(event.id)) {
+                continue;
+              }
+              _seenTimelineEventIds.add(event.id);
+
+              if (!mounted) {
+                return;
+              }
+
+              final label = _timelineEventLabel(event.type);
+              _queueTimelineUpdateNotification(label);
+            }
+          },
+          onError: (_) {
+            // Keep UI responsive even if timeline query is temporarily unavailable.
+          },
+        );
   }
 
   void _queueTimelineUpdateNotification(String label) {
@@ -138,14 +144,6 @@ class _PassengerScreenState extends State<PassengerScreen> {
     messenger.showSnackBar(SnackBar(content: Text(message)));
   }
 
-  double? _parseCoordinate(String input) {
-    final text = input.trim();
-    if (text.isEmpty) {
-      return null;
-    }
-    return double.tryParse(text);
-  }
-
   int? _estimateEtaMinutes(Passenger passenger, BusLocation? busLocation) {
     if (busLocation == null ||
         passenger.latitude == null ||
@@ -173,9 +171,22 @@ class _PassengerScreenState extends State<PassengerScreen> {
     _addressController.text = passenger.address;
     _pickupTimeController.text = passenger.pickupTime;
     _returnTimeController.text = passenger.returnTime;
-    _latitudeController.text = passenger.latitude?.toString() ?? '';
-    _longitudeController.text = passenger.longitude?.toString() ?? '';
+    _selectedLatitude = passenger.latitude;
+    _selectedLongitude = passenger.longitude;
     _didPrefill = true;
+  }
+
+  void _queuePrefillFromProfile(Passenger passenger) {
+    if (_didPrefill) {
+      return;
+    }
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || _didPrefill) {
+        return;
+      }
+      _prefillFromProfile(passenger);
+    });
   }
 
   Future<void> _onSave() async {
@@ -187,6 +198,13 @@ class _PassengerScreenState extends State<PassengerScreen> {
       return;
     }
 
+    if (_selectedLatitude == null || _selectedLongitude == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('passenger.location_required'.tr())),
+      );
+      return;
+    }
+
     final success = await _viewModel.savePassenger(
       id: widget.currentUserId,
       name: _nameController.text.trim(),
@@ -194,8 +212,8 @@ class _PassengerScreenState extends State<PassengerScreen> {
       address: _addressController.text.trim(),
       pickupTime: _pickupTimeController.text.trim(),
       returnTime: _returnTimeController.text.trim(),
-      latitude: _parseCoordinate(_latitudeController.text),
-      longitude: _parseCoordinate(_longitudeController.text),
+      latitude: _selectedLatitude,
+      longitude: _selectedLongitude,
     );
 
     if (!mounted) {
@@ -207,6 +225,127 @@ class _PassengerScreenState extends State<PassengerScreen> {
         context,
       ).showSnackBar(SnackBar(content: Text('passenger.saved'.tr())));
     }
+  }
+
+  Future<Position?> _resolveCurrentPosition() async {
+    final serviceEnabled = await Geolocator.isLocationServiceEnabled();
+    if (!serviceEnabled) {
+      throw StateError('passenger.location_service_disabled');
+    }
+
+    var permission = await Geolocator.checkPermission();
+    if (permission == LocationPermission.denied) {
+      permission = await Geolocator.requestPermission();
+    }
+
+    if (permission == LocationPermission.denied) {
+      throw StateError('passenger.location_permission_denied');
+    }
+
+    if (permission == LocationPermission.deniedForever) {
+      throw StateError('passenger.location_permission_denied_forever');
+    }
+
+    return Geolocator.getCurrentPosition(
+      locationSettings: const LocationSettings(accuracy: LocationAccuracy.high),
+    );
+  }
+
+  Future<void> _setCurrentLocation() async {
+    if (_isResolvingLocation) {
+      return;
+    }
+
+    setState(() {
+      _isResolvingLocation = true;
+    });
+
+    try {
+      final position = await _resolveCurrentPosition();
+      if (!mounted || position == null) {
+        return;
+      }
+
+      setState(() {
+        _selectedLatitude = position.latitude;
+        _selectedLongitude = position.longitude;
+      });
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+
+      final key = error is StateError
+          ? error.message
+          : 'passenger.location_unknown_error';
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(key.tr())));
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isResolvingLocation = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _pickLocationOnMap() async {
+    final initialTarget =
+        (_selectedLatitude != null && _selectedLongitude != null)
+        ? LatLng(_selectedLatitude!, _selectedLongitude!)
+        : const LatLng(30.0444, 31.2357);
+
+    final picked = await Navigator.of(context).push<LatLng>(
+      MaterialPageRoute(
+        builder: (_) => _PassengerMapPickerScreen(
+          initialTarget: initialTarget,
+          initialSelection:
+              (_selectedLatitude != null && _selectedLongitude != null)
+              ? LatLng(_selectedLatitude!, _selectedLongitude!)
+              : null,
+        ),
+      ),
+    );
+
+    if (!mounted || picked == null) {
+      return;
+    }
+
+    setState(() {
+      _selectedLatitude = picked.latitude;
+      _selectedLongitude = picked.longitude;
+    });
+  }
+
+  Future<void> _openInGoogleMaps() async {
+    final lat = _selectedLatitude;
+    final lng = _selectedLongitude;
+    if (lat == null || lng == null) {
+      return;
+    }
+
+    final uri = Uri.parse(
+      'https://www.google.com/maps/search/?api=1&query=$lat,$lng',
+    );
+    final launched = await launchUrl(uri, mode: LaunchMode.externalApplication);
+    if (!launched && mounted) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('states.error_message'.tr())));
+    }
+  }
+
+  String _coordinatesSummary() {
+    final lat = _selectedLatitude;
+    final lng = _selectedLongitude;
+    if (lat == null || lng == null) {
+      return 'passenger.coordinates_not_set'.tr();
+    }
+
+    return 'passenger.coordinates_selected'.tr(
+      args: [lat.toStringAsFixed(6), lng.toStringAsFixed(6)],
+    );
   }
 
   Stream<Passenger?> _passengerProfileStream() {
@@ -323,7 +462,7 @@ class _PassengerScreenState extends State<PassengerScreen> {
 
                             final passenger = snapshot.data;
                             if (passenger != null) {
-                              _prefillFromProfile(passenger);
+                              _queuePrefillFromProfile(passenger);
                             }
 
                             return _PassengerLiveStatusCard(
@@ -369,28 +508,90 @@ class _PassengerScreenState extends State<PassengerScreen> {
                   delay: const Duration(milliseconds: 140),
                   child: AppSectionCard(
                     icon: Icons.location_on_outlined,
-                    title: 'passenger.coordinates_hint'.tr(),
+                    title: 'passenger.coordinates_title'.tr(),
                     child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        _buildField(
-                          controller: _latitudeController,
-                          label: 'passenger.latitude'.tr(),
-                          keyboardType: const TextInputType.numberWithOptions(
-                            decimal: true,
-                            signed: true,
-                          ),
-                          required: false,
+                        Text(
+                          _coordinatesSummary(),
+                          style: Theme.of(context).textTheme.bodyMedium,
+                        ),
+                        SizedBox(height: AppSpacing.xs.h),
+                        Text(
+                          'passenger.coordinates_hint'.tr(),
+                          style: Theme.of(context).textTheme.bodySmall,
                         ),
                         SizedBox(height: AppSpacing.sm.h),
-                        _buildField(
-                          controller: _longitudeController,
-                          label: 'passenger.longitude'.tr(),
-                          keyboardType: const TextInputType.numberWithOptions(
-                            decimal: true,
-                            signed: true,
-                          ),
-                          required: false,
+                        Wrap(
+                          spacing: AppSpacing.xs.w,
+                          runSpacing: AppSpacing.xs.h,
+                          children: [
+                            FilledButton.icon(
+                              onPressed: _isResolvingLocation
+                                  ? null
+                                  : _setCurrentLocation,
+                              icon: _isResolvingLocation
+                                  ? SizedBox(
+                                      width: 14.w,
+                                      height: 14.w,
+                                      child: const CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                      ),
+                                    )
+                                  : const Icon(Icons.my_location_outlined),
+                              label: Text(
+                                'passenger.location_use_current'.tr(),
+                              ),
+                            ),
+                            OutlinedButton.icon(
+                              onPressed: _pickLocationOnMap,
+                              icon: const Icon(Icons.map_outlined),
+                              label: Text('passenger.location_pick_map'.tr()),
+                            ),
+                            if (_selectedLatitude != null &&
+                                _selectedLongitude != null)
+                              OutlinedButton.icon(
+                                onPressed: _openInGoogleMaps,
+                                icon: const Icon(Icons.open_in_new),
+                                label: Text(
+                                  'passenger.location_open_google_maps'.tr(),
+                                ),
+                              ),
+                          ],
                         ),
+                        if (_selectedLatitude != null &&
+                            _selectedLongitude != null) ...[
+                          SizedBox(height: AppSpacing.sm.h),
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(AppRadius.sm.r),
+                            child: SizedBox(
+                              height: 170.h,
+                              child: GoogleMap(
+                                initialCameraPosition: CameraPosition(
+                                  target: LatLng(
+                                    _selectedLatitude!,
+                                    _selectedLongitude!,
+                                  ),
+                                  zoom: 15,
+                                ),
+                                markers: {
+                                  Marker(
+                                    markerId: const MarkerId(
+                                      'passenger_selected_location',
+                                    ),
+                                    position: LatLng(
+                                      _selectedLatitude!,
+                                      _selectedLongitude!,
+                                    ),
+                                  ),
+                                },
+                                zoomControlsEnabled: false,
+                                myLocationButtonEnabled: false,
+                                myLocationEnabled: false,
+                              ),
+                            ),
+                          ),
+                        ],
                       ],
                     ),
                   ),
@@ -600,6 +801,92 @@ class _PassengerLiveStatusCard extends StatelessWidget {
           ),
         );
       },
+    );
+  }
+}
+
+class _PassengerMapPickerScreen extends StatefulWidget {
+  const _PassengerMapPickerScreen({
+    required this.initialTarget,
+    this.initialSelection,
+  });
+
+  final LatLng initialTarget;
+  final LatLng? initialSelection;
+
+  @override
+  State<_PassengerMapPickerScreen> createState() =>
+      _PassengerMapPickerScreenState();
+}
+
+class _PassengerMapPickerScreenState extends State<_PassengerMapPickerScreen> {
+  late LatLng _selected;
+
+  @override
+  void initState() {
+    super.initState();
+    _selected = widget.initialSelection ?? widget.initialTarget;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: Text('passenger.map_picker_title'.tr())),
+      body: Column(
+        children: [
+          Expanded(
+            child: GoogleMap(
+              initialCameraPosition: CameraPosition(
+                target: widget.initialTarget,
+                zoom: 14,
+              ),
+              markers: {
+                Marker(
+                  markerId: const MarkerId('picked_location'),
+                  position: _selected,
+                ),
+              },
+              onTap: (position) {
+                setState(() {
+                  _selected = position;
+                });
+              },
+              myLocationButtonEnabled: true,
+              myLocationEnabled: true,
+            ),
+          ),
+          Padding(
+            padding: EdgeInsets.fromLTRB(16.w, 12.h, 16.w, 16.h),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'passenger.map_picker_hint'.tr(),
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+                SizedBox(height: AppSpacing.sm.h),
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: () => Navigator.of(context).pop(),
+                        child: Text('driver.cancel'.tr()),
+                      ),
+                    ),
+                    SizedBox(width: AppSpacing.xs.w),
+                    Expanded(
+                      child: FilledButton(
+                        onPressed: () => Navigator.of(context).pop(_selected),
+                        child: Text('passenger.map_picker_confirm'.tr()),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

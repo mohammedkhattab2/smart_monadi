@@ -120,6 +120,7 @@ class _HomeShellState extends State<HomeShell> {
               currentUserId: widget.currentUserId,
             ),
           ];
+    final hasMultipleTabs = pages.length >= 2;
 
     return Scaffold(
       appBar: AppBar(
@@ -169,52 +170,55 @@ class _HomeShellState extends State<HomeShell> {
         ],
       ),
       body: isWide
-          ? Row(
-              children: [
-                Container(
-                  width: 86.w,
-                  decoration: BoxDecoration(
-                    color: colorScheme.surface,
-                    border: Border(
-                      right: BorderSide(
-                        color: colorScheme.outlineVariant.withValues(
-                          alpha: 0.5,
+          ? (hasMultipleTabs
+                ? Row(
+                    children: [
+                      Container(
+                        width: 86.w,
+                        decoration: BoxDecoration(
+                          color: colorScheme.surface,
+                          border: Border(
+                            right: BorderSide(
+                              color: colorScheme.outlineVariant.withValues(
+                                alpha: 0.5,
+                              ),
+                            ),
+                          ),
+                        ),
+                        child: NavigationRail(
+                          selectedIndex: _currentIndex,
+                          onDestinationSelected: (index) {
+                            setState(() {
+                              _currentIndex = index;
+                            });
+                          },
+                          groupAlignment: -0.85,
+                          labelType: NavigationRailLabelType.selected,
+                          destinations: _railDestinations(),
                         ),
                       ),
+                      Expanded(
+                        child: AppFadeSlideIn(
+                          key: ValueKey<int>(_currentIndex),
+                          child: pages[_currentIndex],
+                        ),
+                      ),
+                    ],
+                  )
+                : pages.first)
+          : (hasMultipleTabs
+                ? AnimatedSwitcher(
+                    duration: AppMotion.medium,
+                    switchInCurve: Curves.easeOut,
+                    switchOutCurve: Curves.easeIn,
+                    child: KeyedSubtree(
+                      key: ValueKey<int>(_currentIndex),
+                      child: pages[_currentIndex],
                     ),
-                  ),
-                  child: NavigationRail(
-                    selectedIndex: _currentIndex,
-                    onDestinationSelected: (index) {
-                      setState(() {
-                        _currentIndex = index;
-                      });
-                    },
-                    groupAlignment: -0.85,
-                    labelType: NavigationRailLabelType.selected,
-                    destinations: _railDestinations(),
-                  ),
-                ),
-                Expanded(
-                  child: AppFadeSlideIn(
-                    key: ValueKey<int>(_currentIndex),
-                    child: pages[_currentIndex],
-                  ),
-                ),
-              ],
-            )
-          : AnimatedSwitcher(
-              duration: AppMotion.medium,
-              switchInCurve: Curves.easeOut,
-              switchOutCurve: Curves.easeIn,
-              child: KeyedSubtree(
-                key: ValueKey<int>(_currentIndex),
-                child: pages[_currentIndex],
-              ),
-            ),
-      bottomNavigationBar: isWide
-          ? null
-          : NavigationBar(
+                  )
+                : pages.first),
+      bottomNavigationBar: (!isWide && hasMultipleTabs)
+          ? NavigationBar(
               selectedIndex: _currentIndex,
               onDestinationSelected: (index) {
                 setState(() {
@@ -222,7 +226,8 @@ class _HomeShellState extends State<HomeShell> {
                 });
               },
               destinations: _bottomDestinations(),
-            ),
+            )
+          : null,
     );
   }
 }

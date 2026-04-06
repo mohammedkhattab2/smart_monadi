@@ -33,6 +33,7 @@ class _AuthGateScreenState extends State<AuthGateScreen> {
   late final WatchAuthStateUseCase _watchAuthStateUseCase;
   late final ResolveRoleUseCase _resolveRoleUseCase;
   late final SignOutUseCase _signOutUseCase;
+  String? _registeredPushUid;
 
   @override
   void initState() {
@@ -40,6 +41,12 @@ class _AuthGateScreenState extends State<AuthGateScreen> {
     _watchAuthStateUseCase = WatchAuthStateUseCase(widget.authRepository);
     _resolveRoleUseCase = ResolveRoleUseCase(widget.authRepository);
     _signOutUseCase = SignOutUseCase(widget.authRepository);
+  }
+
+  @override
+  void dispose() {
+    widget.dependencies.pushNotificationService.dispose();
+    super.dispose();
   }
 
   @override
@@ -77,7 +84,17 @@ class _AuthGateScreenState extends State<AuthGateScreen> {
 
         final user = snapshot.data;
         if (user == null) {
+          final oldUid = _registeredPushUid;
+          if (oldUid != null) {
+            _registeredPushUid = null;
+            widget.dependencies.pushNotificationService.unregisterUser(oldUid);
+          }
           return AuthScreen(authService: widget.authRepository);
+        }
+
+        if (_registeredPushUid != user.uid) {
+          _registeredPushUid = user.uid;
+          widget.dependencies.pushNotificationService.registerUser(user.uid);
         }
 
         return FutureBuilder<UserRole>(

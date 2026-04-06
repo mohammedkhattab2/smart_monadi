@@ -289,19 +289,32 @@ void main() {
         final harness = _TestHarness()..locationService.hasPermission = true;
         final vm = harness.createViewModel();
 
+        final now = DateTime.now();
+        final currentMinute = now.hour * 60 + now.minute;
+        final pickupMinute = currentMinute + 5;
+        final pickupHourText = ((pickupMinute ~/ 60) % 24).toString().padLeft(
+          2,
+          '0',
+        );
+        final pickupMinuteText = (pickupMinute % 60).toString().padLeft(2, '0');
+
         await vm.startTracking();
 
         harness.locationRepository.emitBusLocation(
-          const BusLocation(latitude: 0.0, longitude: 0.0, updatedAtMillis: 1),
+          BusLocation(
+            latitude: 0.0,
+            longitude: 0.0,
+            updatedAtMillis: now.millisecondsSinceEpoch,
+          ),
         );
         harness.passengerRepository.emitPassengers([
-          const Passenger(
+          Passenger(
             id: 'p-approach',
             name: 'Ali',
             phone: '+201111111111',
             address: 'Cairo',
-            pickupTime: '07:30',
-            latitude: 0.003,
+            pickupTime: '$pickupHourText:$pickupMinuteText',
+            latitude: 0.018,
             longitude: 0.0,
             updatedAtMillis: 1,
           ),
@@ -320,23 +333,64 @@ void main() {
     );
 
     test(
-      'startTracking triggers pickup automation when passenger is very close',
+      'startTracking triggers pickup automation after leaving pickup zone',
       () async {
         final harness = _TestHarness()..locationService.hasPermission = true;
         final vm = harness.createViewModel();
 
+        final now = DateTime.now();
+        final currentMinute = now.hour * 60 + now.minute;
+        final pickupMinute = currentMinute + 4;
+        final pickupHourText = ((pickupMinute ~/ 60) % 24).toString().padLeft(
+          2,
+          '0',
+        );
+        final pickupMinuteText = (pickupMinute % 60).toString().padLeft(2, '0');
+
         await vm.startTracking();
 
         harness.locationRepository.emitBusLocation(
-          const BusLocation(latitude: 0.0, longitude: 0.0, updatedAtMillis: 1),
+          BusLocation(
+            latitude: 0.0,
+            longitude: 0.0,
+            updatedAtMillis: now.millisecondsSinceEpoch,
+          ),
         );
         harness.passengerRepository.emitPassengers([
-          const Passenger(
+          Passenger(
             id: 'p-pickup',
             name: 'Mona',
             phone: '+202222222222',
             address: 'Giza',
-            pickupTime: '08:00',
+            pickupTime: '$pickupHourText:$pickupMinuteText',
+            latitude: 0.0005,
+            longitude: 0.0,
+            updatedAtMillis: 1,
+          ),
+        ]);
+
+        await Future<void>.delayed(Duration.zero);
+
+        expect(harness.passengerRepository.markPickedUpCalls, 0);
+        expect(harness.tripEventRepository.pickupLogCalls, 1);
+        expect(harness.tripEventRepository.smsCalls, 1);
+
+        harness.locationRepository.emitBusLocation(
+          BusLocation(
+            latitude: 0.01,
+            longitude: 0.0,
+            updatedAtMillis: now
+                .add(const Duration(minutes: 1))
+                .millisecondsSinceEpoch,
+          ),
+        );
+        harness.passengerRepository.emitPassengers([
+          Passenger(
+            id: 'p-pickup',
+            name: 'Mona',
+            phone: '+202222222222',
+            address: 'Giza',
+            pickupTime: '$pickupHourText:$pickupMinuteText',
             latitude: 0.0005,
             longitude: 0.0,
             updatedAtMillis: 1,
@@ -347,7 +401,7 @@ void main() {
 
         expect(harness.passengerRepository.markPickedUpCalls, 1);
         expect(harness.passengerRepository.lastMarkedPassengerId, 'p-pickup');
-        expect(harness.tripEventRepository.pickupLogCalls, 1);
+        expect(harness.tripEventRepository.pickupLogCalls, 2);
         expect(harness.tripEventRepository.smsCalls, 1);
 
         vm.dispose();

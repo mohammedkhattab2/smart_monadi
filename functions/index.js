@@ -93,6 +93,75 @@ function renderSmsBody(template, variables = {}) {
   return `Smart Monadi update for ${variables.name ?? 'passenger'}.`;
 }
 
+function renderPushTitle(template) {
+  if (template === 'arriving_soon') {
+    return 'Smart Monadi: Bus approaching';
+  }
+  if (template === 'arrival_now') {
+    return 'Smart Monadi: Bus arrived';
+  }
+  return 'Smart Monadi update';
+}
+
+async function sendPushToPassenger(payload) {
+  const passengerId = (payload.passengerId || '').toString();
+  if (!passengerId) {
+    return;
+  }
+
+  const userDoc = await db.collection('users').doc(passengerId).get();
+  if (!userDoc.exists) {
+    return;
+  }
+
+  const data = userDoc.data() || {};
+  const rawTokens = Array.isArray(data.fcmTokens) ? data.fcmTokens : [];
+  const tokens = rawTokens
+    .map((t) => (typeof t === 'string' ? t.trim() : ''))
+    .filter((t) => t.length > 0);
+
+  if (tokens.length === 0) {
+    return;
+  }
+
+  const body = renderSmsBody(payload.template, payload.variables);
+  const title = renderPushTitle(payload.template);
+
+  const response = await admin.messaging().sendEachForMulticast({
+    tokens,
+    notification: {
+      title,
+      body,
+    },
+    data: {
+      template: (payload.template || '').toString(),
+      passengerId,
+    },
+  });
+
+  const invalidTokens = [];
+  response.responses.forEach((item, index) => {
+    if (item.success) {
+      return;
+    }
+    const code = item.error && item.error.code ? item.error.code : '';
+    if (code === 'messaging/registration-token-not-registered' ||
+        code === 'messaging/invalid-argument') {
+      invalidTokens.push(tokens[index]);
+    }
+  });
+
+  if (invalidTokens.length > 0) {
+    await db.collection('users').doc(passengerId).set(
+      {
+        fcmTokens: admin.firestore.FieldValue.arrayRemove(...invalidTokens),
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      },
+      { merge: true },
+    );
+  }
+}
+
 async function sendSmsAndUpdate(messageId, payload, secrets) {
   const docRef = db.collection('sms_outbox').doc(messageId);
   const currentStatus = (payload.status || '').toString();
@@ -164,6 +233,7 @@ async function sendSmsAndUpdate(messageId, payload, secrets) {
       to: payload.toPhone,
       attempts: currentAttempts,
     });
+    await sendPushToPassenger(payload);
     await incrementMetric('sentCount');
   } catch (error) {
     const normalized = normalizeSmsError(error);
