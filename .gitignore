@@ -43,3 +43,8 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# Local secrets and machine-specific config
+/android/local.properties
+/eta_service/.env
+/eta_service/.venv/

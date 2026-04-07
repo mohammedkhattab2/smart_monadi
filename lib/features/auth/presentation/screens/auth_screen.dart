@@ -1,4 +1,5 @@
 import 'package:easy_localization/easy_localization.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:smart_monadi/app/design/app_primitives.dart';
@@ -118,13 +119,14 @@ class _AuthScreenState extends State<AuthScreen>
 
     try {
       await action();
-    } catch (_) {
+    } catch (error) {
       if (!mounted) {
         return;
       }
+      final message = _mapErrorToMessage(error);
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(SnackBar(content: Text('auth.error_generic'.tr())));
+      ).showSnackBar(SnackBar(content: Text(message)));
     } finally {
       if (mounted) {
         setState(() {
@@ -132,6 +134,56 @@ class _AuthScreenState extends State<AuthScreen>
         });
       }
     }
+  }
+
+  String _mapErrorToMessage(Object error) {
+    if (error is FirebaseAuthException) {
+      switch (error.code) {
+        case 'email-already-in-use':
+          return 'Email already in use.';
+        case 'invalid-email':
+          return 'Invalid email format.';
+        case 'weak-password':
+          return 'Password is too weak (minimum 6 characters).';
+        case 'user-not-found':
+        case 'wrong-password':
+        case 'invalid-credential':
+          return 'Invalid email or password.';
+        case 'network-request-failed':
+          return 'Network error. Check your internet connection.';
+        case 'too-many-requests':
+          return 'Too many attempts. Try again later.';
+        case 'operation-not-allowed':
+          return 'Email/Password sign-in is disabled in Firebase.';
+        case 'internal-error':
+          return 'Firebase internal error. Verify SHA fingerprints and google-services.json.';
+        default:
+          final details = (error.message ?? '').trim();
+          if (details.isNotEmpty) {
+            return details;
+          }
+          return 'Authentication failed (${error.code}).';
+      }
+    }
+
+    if (error is FirebaseException) {
+      if (error.plugin == 'cloud_firestore') {
+        switch (error.code) {
+          case 'permission-denied':
+            return 'Firestore permission denied. Check Firestore security rules.';
+          case 'unavailable':
+            return 'Firestore is unavailable right now. Try again.';
+          default:
+            final details = (error.message ?? '').trim();
+            if (details.isNotEmpty) {
+              return details;
+            }
+            return 'Database error (${error.code}).';
+        }
+      }
+    }
+
+    return 'auth.error_generic'.tr();
   }
 
   @override

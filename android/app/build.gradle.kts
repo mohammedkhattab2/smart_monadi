@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     // START: FlutterFire Configuration
@@ -7,6 +9,23 @@ plugins {
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id("dev.flutter.flutter-gradle-plugin")
 }
+
+val localProperties = Properties().apply {
+    val localPropertiesFile = rootProject.file("local.properties")
+    if (localPropertiesFile.exists()) {
+        localPropertiesFile.inputStream().use(::load)
+    }
+}
+
+fun readSecret(name: String): String? {
+    return (project.findProperty(name) as String?)
+        ?: System.getenv(name)
+        ?: localProperties.getProperty(name)
+}
+
+val releaseStorePassword = readSecret("STORE_PASSWORD")
+val releaseKeyPassword = readSecret("KEY_PASSWORD")
+val mapsApiKey = readSecret("MAPS_API_KEY") ?: ""
 
 android {
     namespace = "com.example.smart_monadi"
@@ -31,13 +50,21 @@ android {
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+        manifestPlaceholders["MAPS_API_KEY"] = mapsApiKey
+    }
+
+    signingConfigs {
+        create("release") {
+            storeFile = file("smart_monadi_key.jks")
+            keyAlias = "smart_monadi"
+            storePassword = releaseStorePassword
+            keyPassword = releaseKeyPassword
+        }
     }
 
     buildTypes {
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = signingConfigs.getByName("release")
         }
     }
 }

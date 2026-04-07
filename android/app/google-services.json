@@ -12,7 +12,16 @@
           "package_name": "com.example.smart_monadi"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "123305043150-p6l20mhin3a6eecp3trmpol0i3kuot6o.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.smart_monadi",
+            "certificate_hash": "cbd3668a90f0e2d2838d907f5c8d83c7d8bf77bf"
+          }
+        }
+      ],
       "api_key": [
         {
           "current_key": "AIzaSyDpOwdvxDkDUlRlWCeHaXI-b2RdCJf62BY"

@@ -559,39 +559,47 @@ class _PassengerScreenState extends State<PassengerScreen> {
                               ),
                           ],
                         ),
-                        if (_selectedLatitude != null &&
-                            _selectedLongitude != null) ...[
-                          SizedBox(height: AppSpacing.sm.h),
-                          ClipRRect(
-                            borderRadius: BorderRadius.circular(AppRadius.sm.r),
-                            child: SizedBox(
-                              height: 170.h,
-                              child: GoogleMap(
-                                initialCameraPosition: CameraPosition(
-                                  target: LatLng(
-                                    _selectedLatitude!,
-                                    _selectedLongitude!,
-                                  ),
-                                  zoom: 15,
-                                ),
-                                markers: {
-                                  Marker(
-                                    markerId: const MarkerId(
-                                      'passenger_selected_location',
-                                    ),
-                                    position: LatLng(
-                                      _selectedLatitude!,
-                                      _selectedLongitude!,
-                                    ),
-                                  ),
-                                },
-                                zoomControlsEnabled: false,
-                                myLocationButtonEnabled: false,
-                                myLocationEnabled: false,
+                        SizedBox(height: AppSpacing.sm.h),
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(AppRadius.sm.r),
+                          child: SizedBox(
+                            height: 170.h,
+                            child: GoogleMap(
+                              key: ValueKey(
+                                'passenger_preview_${_selectedLatitude ?? 30.0444}_${_selectedLongitude ?? 31.2357}',
                               ),
+                              initialCameraPosition: CameraPosition(
+                                target: LatLng(
+                                  _selectedLatitude ?? 30.0444,
+                                  _selectedLongitude ?? 31.2357,
+                                ),
+                                zoom:
+                                    _selectedLatitude != null &&
+                                        _selectedLongitude != null
+                                    ? 15
+                                    : 11,
+                              ),
+                              markers:
+                                  _selectedLatitude != null &&
+                                      _selectedLongitude != null
+                                  ? {
+                                      Marker(
+                                        markerId: const MarkerId(
+                                          'passenger_selected_location',
+                                        ),
+                                        position: LatLng(
+                                          _selectedLatitude!,
+                                          _selectedLongitude!,
+                                        ),
+                                      ),
+                                    }
+                                  : const <Marker>{},
+                              zoomControlsEnabled: false,
+                              myLocationButtonEnabled: false,
+                              myLocationEnabled: false,
                             ),
                           ),
-                        ],
+                        ),
                       ],
                     ),
                   ),

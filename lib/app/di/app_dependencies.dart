@@ -1,4 +1,5 @@
 import 'package:smart_monadi/features/auth/data/services/auth_service.dart';
+import 'package:smart_monadi/app/config/runtime_env.dart';
 import 'package:smart_monadi/features/auth/domain/repositories/auth_repository.dart';
 import 'package:smart_monadi/features/automation/data/repositories/trip_event_repository.dart';
 import 'package:smart_monadi/features/automation/domain/repositories/trip_event_repository.dart';
@@ -69,7 +70,7 @@ class AppDependencies {
   DriverLiveViewModel createDriverLiveViewModel() {
     const calculateEtaUseCase = CalculateEtaUseCase();
     final sortPassengersUseCase = SortPassengersUseCase(calculateEtaUseCase);
-    const etaServiceUrl = String.fromEnvironment('ETA_SERVICE_URL');
+    final etaServiceUrl = RuntimeEnv.etaServiceUrl;
     final etaPredictionService = HttpPythonEtaPredictionService(
       baseUrl: etaServiceUrl,
     );

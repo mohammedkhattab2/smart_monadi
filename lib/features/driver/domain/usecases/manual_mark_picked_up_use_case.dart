@@ -28,6 +28,14 @@ class ManualMarkPickedUpUseCase {
       toPhone: passenger.phone,
       template: 'arrival_now',
       variables: {'name': passenger.name, 'pickupTime': passenger.pickupTime},
+      idempotencyKey: _buildManualArrivalSmsKey(passenger),
     );
+  }
+
+  String _buildManualArrivalSmsKey(Passenger passenger) {
+    final pickup = passenger.pickupTime.trim().isEmpty
+        ? 'unscheduled'
+        : passenger.pickupTime.trim();
+    return 'manual_arrival_${passenger.id}_$pickup';
   }
 }

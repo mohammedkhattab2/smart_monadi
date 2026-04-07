@@ -1,0 +1,64 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isSelf(uid) {
+      return isSignedIn() && request.auth.uid == uid;
+    }
+
+    function userRole() {
+      return isSignedIn()
+          ? get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role
+          : null;
+    }
+
+    function isDriver() {
+      return userRole() == 'driver';
+    }
+
+    match /users/{uid} {
+      allow read, write: if isSelf(uid);
+    }
+
+    match /passengers/{uid} {
+      allow read: if isSelf(uid) || isDriver();
+      allow create, update: if isSelf(uid) || isDriver();
+      allow delete: if isDriver();
+    }
+
+    match /bus_live/{docId} {
+      allow read: if isSignedIn();
+      allow write: if isDriver();
+    }
+
+    match /pickup_logs/{logId} {
+      allow read: if isDriver() ||
+        (isSignedIn() && resource.data.passengerId == request.auth.uid);
+      allow create, update, delete: if isDriver();
+    }
+
+    match /sms_outbox/{messageId} {
+      allow create: if isDriver();
+      allow read, update, delete: if false;
+    }
+
+    match /sms_delivery_events/{eventId} {
+      allow read: if isDriver();
+      allow create: if isDriver();
+      allow update, delete: if false;
+    }
+
+    match /sms_outbox_dead_letter/{deadId} {
+      allow read: if isDriver();
+      allow write: if false;
+    }
+
+    match /sms_metrics/{metricId} {
+      allow read: if isDriver();
+      allow write: if false;
+    }
+  }
+}

@@ -109,6 +109,7 @@ class RunGeofenceAutomationUseCase {
               'name': passenger.name,
               'pickupTime': passenger.pickupTime,
             },
+            idempotencyKey: _buildArrivalSmsKey(passenger, now),
           );
         }
 
@@ -178,6 +179,7 @@ class RunGeofenceAutomationUseCase {
               'name': passenger.name,
               'pickupTime': passenger.pickupTime,
             },
+            idempotencyKey: _buildApproachingSmsKey(passenger, now),
           );
         }
         continue;
@@ -286,5 +288,28 @@ class RunGeofenceAutomationUseCase {
     }
 
     return h * 60 + m;
+  }
+
+  String _buildApproachingSmsKey(Passenger passenger, DateTime now) {
+    final day = _dayKey(now);
+    final pickup = passenger.pickupTime.trim().isEmpty
+        ? 'unscheduled'
+        : passenger.pickupTime.trim();
+    return 'approaching_${passenger.id}_${day}_$pickup';
+  }
+
+  String _buildArrivalSmsKey(Passenger passenger, DateTime now) {
+    final day = _dayKey(now);
+    final pickup = passenger.pickupTime.trim().isEmpty
+        ? 'unscheduled'
+        : passenger.pickupTime.trim();
+    return 'arrival_${passenger.id}_${day}_$pickup';
+  }
+
+  String _dayKey(DateTime value) {
+    final y = value.year.toString().padLeft(4, '0');
+    final m = value.month.toString().padLeft(2, '0');
+    final d = value.day.toString().padLeft(2, '0');
+    return '$y$m$d';
   }
 }

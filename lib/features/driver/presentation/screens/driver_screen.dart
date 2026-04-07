@@ -4,6 +4,7 @@ import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:smart_monadi/app/config/runtime_env.dart';
 import 'package:smart_monadi/app/design/app_primitives.dart';
 import 'package:smart_monadi/app/design/design_tokens.dart';
 import 'package:smart_monadi/features/driver/data/services/google_directions_route_service.dart';
@@ -24,10 +25,7 @@ class DriverScreen extends StatefulWidget {
 
 class _DriverScreenState extends State<DriverScreen>
     with WidgetsBindingObserver {
-  static const _directionsApiKey = String.fromEnvironment(
-    'DIRECTIONS_API_KEY',
-    defaultValue: 'AIzaSyDpOwdvxDkDUlRlWCeHaXI-b2RdCJf62BY',
-  );
+  static final _directionsApiKey = RuntimeEnv.directionsApiKey;
 
   late final DriverLiveViewModel _liveViewModel;
   late final RouteDirectionsService? _routeDirectionsService;

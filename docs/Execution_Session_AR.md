@@ -5,7 +5,7 @@
 ## Step 1: Precheck
 
 ```powershell
-cd "E:\flutter project\smart_monadi"
+cd "D:\flutter project\smart_monadi"
 ./scripts/go_live_precheck.ps1
 ```
 
@@ -18,8 +18,8 @@ cd "E:\flutter project\smart_monadi"
 ## Step 2: تشغيل التطوير بسرعة (Emulator)
 
 ```powershell
-cd "E:\flutter project\smart_monadi"
-./scripts/start_dev_emulator.ps1 -DirectionsApiKey "YOUR_GOOGLE_DIRECTIONS_API_KEY"
+cd "D:\flutter project\smart_monadi"
+./scripts/start_dev_emulator.ps1
 ```
 
 هذا الأمر سيقوم بـ:
@@ -43,7 +43,7 @@ cd "E:\flutter project\smart_monadi"
 ## Step 5: قبل الديمو
 
 ```powershell
-cd "E:\flutter project\smart_monadi"
+cd "D:\flutter project\smart_monadi"
 flutter analyze
 flutter test
 ```

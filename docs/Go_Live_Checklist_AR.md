@@ -2,11 +2,34 @@
 
 استخدم هذه القائمة قبل أي Demo أو إطلاق فعلي.
 
+## Execution Status (2026-04-07)
+
+تم التحقق تلقائيًا في هذه الجلسة:
+
+- [x] `flutter pub get` بدون أخطاء.
+- [x] `flutter analyze` بدون أخطاء.
+- [x] `flutter test` ناجح.
+- [x] Firestore indexes deployed وحالتها Ready.
+- [x] Firestore rules مفعلة وتمنع الوصول غير المصرح.
+- [x] Functions deployed بنجاح.
+- [x] خدمة ETA تعمل: `/health` => `ok`.
+- [x] `/predict` يعيد `etaMinutes`.
+- [x] تم تشغيل التطبيق بنجاح على جهاز Android حقيقي (Release).
+- [x] تم حل خطأ `cloud_firestore/permission-denied` المرتبط بتحديث FCM token أثناء تبديل الجلسة.
+
+متبقي لاختبار يدوي على الأجهزة:
+
+- [ ] تسجيل/دخول الراكب والسائق على أجهزة فعلية.
+- [ ] التتبع المباشر + route polyline في سيناريو حي.
+- [ ] SMS قبل الوصول/عند الوصول مع رقم Twilio فعلي.
+- [ ] Push notifications على Android/iOS (خصوصًا APNs على iOS).
+- [ ] التحقق النهائي من منح صلاحيات الموقع/الإشعارات على الأجهزة.
+
 ## A) Flutter App
 
-- [ ] `flutter pub get` بدون أخطاء.
-- [ ] `flutter analyze` بدون أخطاء.
-- [ ] `flutter test` ناجح.
+- [x] `flutter pub get` بدون أخطاء.
+- [x] `flutter analyze` بدون أخطاء.
+- [x] `flutter test` ناجح.
 - [ ] تسجيل/دخول الراكب يعمل.
 - [ ] تسجيل/دخول السائق يعمل.
 
@@ -33,15 +56,16 @@
 
 ## E) Firebase
 
-- [ ] Firestore indexes deployed وحالتها Ready.
-- [ ] Firestore rules مفعلة وتمنع الوصول غير المصرح.
-- [ ] Functions deployed بنجاح.
+- [x] Firestore indexes deployed وحالتها Ready.
+- [x] Firestore rules مفعلة وتمنع الوصول غير المصرح.
+- [x] Functions deployed بنجاح.
 - [ ] Twilio secrets مضبوطة.
+- [x] لا يوجد مفاتيح خرائط hardcoded داخل AndroidManifest/Info.plist.
 
 ## F) Python ETA Service
 
-- [ ] خدمة ETA تعمل: `/health` => `ok`.
-- [ ] `/predict` يعيد `etaMinutes`.
+- [x] خدمة ETA تعمل: `/health` => `ok`.
+- [x] `/predict` يعيد `etaMinutes`.
 - [ ] Flutter شغال بـ `ETA_SERVICE_URL` الصحيح.
 
 ## G) Platform Specific
@@ -68,11 +92,17 @@
 ### Terminal 2 (Android emulator)
 
 ```powershell
-./scripts/run_flutter_emulator.ps1 -DirectionsApiKey "YOUR_GOOGLE_DIRECTIONS_API_KEY"
+./scripts/run_flutter_emulator.ps1
 ```
 
 ### Terminal 2 (Android device)
 
 ```powershell
-./scripts/run_flutter_device.ps1 -DirectionsApiKey "YOUR_GOOGLE_DIRECTIONS_API_KEY" -EtaServiceUrl "http://192.168.1.100:8081"
+./scripts/run_flutter_device.ps1 -EtaServiceUrl "http://192.168.1.100:8081"
+```
+
+### Terminal 3 (Backend smoke)
+
+```powershell
+./scripts/go_live_backend_smoke.ps1
 ```

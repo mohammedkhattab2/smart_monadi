@@ -35,7 +35,7 @@ firebase --version
 من جذر المشروع:
 
 ```powershell
-cd "E:\flutter project\smart_monadi"
+cd "D:\flutter project\smart_monadi"
 flutter pub get
 ```
 
@@ -50,7 +50,7 @@ flutter analyze
 من جذر المشروع:
 
 ```powershell
-cd "E:\flutter project\smart_monadi\eta_service"
+cd "D:\flutter project\smart_monadi\eta_service"
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 pip install -r requirements.txt
@@ -60,13 +60,13 @@ uvicorn main:app --host 0.0.0.0 --port 8081
 اختبار صحة الخدمة (في Terminal جديد):
 
 ```powershell
-curl http://localhost:8081/health
+curl http://localhost:8081/health -UseBasicParsing
 ```
 
 اختبار endpoint التنبؤ:
 
 ```powershell
-curl -Method Post http://localhost:8081/predict -ContentType "application/json" -Body '{"busLat":30.0444,"busLng":31.2357,"passengerLat":30.05,"passengerLng":31.24,"speedMetersPerSecond":8.33}'
+curl -Method Post http://localhost:8081/predict -UseBasicParsing -ContentType "application/json" -Body '{"busLat":30.0444,"busLng":31.2357,"passengerLat":30.05,"passengerLng":31.24,"speedMetersPerSecond":8.33}'
 ```
 
 ## 4) تشغيل Flutter مع ETA + Directions
@@ -78,15 +78,15 @@ curl -Method Post http://localhost:8081/predict -ContentType "application/json" 
 الأوامر الآن تعمل بدون تمرير key يدويًا (تم ضبط Defaults في السكربتات):
 
 ```powershell
-cd "E:\flutter project\smart_monadi"
+cd "D:\flutter project\smart_monadi"
 ./scripts/run_flutter_emulator.ps1
 ```
 
 أو يدويًا:
 
 ```powershell
-cd "E:\flutter project\smart_monadi"
-flutter run --dart-define=ETA_SERVICE_URL=http://10.0.2.2:8081 --dart-define=DIRECTIONS_API_KEY=YOUR_GOOGLE_DIRECTIONS_API_KEY
+cd "D:\flutter project\smart_monadi"
+flutter run --dart-define=ETA_SERVICE_URL=http://10.0.2.2:8081
 ```
 
 ### 4.2 جهاز Android حقيقي
@@ -94,7 +94,7 @@ flutter run --dart-define=ETA_SERVICE_URL=http://10.0.2.2:8081 --dart-define=DIR
 استبدل IP بعنوان جهاز الكمبيوتر على نفس الشبكة:
 
 ```powershell
-cd "E:\flutter project\smart_monadi"
+cd "D:\flutter project\smart_monadi"
 ./scripts/run_flutter_device.ps1
 ```
 
@@ -105,24 +105,24 @@ cd "E:\flutter project\smart_monadi"
 
 من جذر المشروع:
 
-### 5.1 نشر الفهارس (Indexes)
+### 5.1 نشر الفهارس + القواعد (Indexes + Rules)
 
 ```powershell
-cd "E:\flutter project\smart_monadi"
-firebase deploy --only firestore:indexes
+cd "D:\flutter project\smart_monadi"
+firebase deploy --only firestore:indexes,firestore:rules
 ```
 
 ### 5.2 تثبيت dependencies للـ Functions
 
 ```powershell
-cd "E:\flutter project\smart_monadi\functions"
+cd "D:\flutter project\smart_monadi\functions"
 npm install
 ```
 
 ### 5.3 ضبط أسرار Twilio
 
 ```powershell
-cd "E:\flutter project\smart_monadi\functions"
+cd "D:\flutter project\smart_monadi\functions"
 firebase functions:secrets:set TWILIO_ACCOUNT_SID
 firebase functions:secrets:set TWILIO_AUTH_TOKEN
 firebase functions:secrets:set TWILIO_FROM_NUMBER
@@ -131,7 +131,7 @@ firebase functions:secrets:set TWILIO_FROM_NUMBER
 ### 5.4 نشر Cloud Functions
 
 ```powershell
-cd "E:\flutter project\smart_monadi\functions"
+cd "D:\flutter project\smart_monadi\functions"
 firebase deploy --only functions
 ```
 
@@ -140,7 +140,7 @@ firebase deploy --only functions
 من جذر المشروع:
 
 ```powershell
-cd "E:\flutter project\smart_monadi"
+cd "D:\flutter project\smart_monadi"
 flutter test
 ```
 
@@ -151,12 +151,19 @@ flutter test test\features\driver\domain\usecases\driver_automation_usecases_tes
 flutter test test\features\driver\presentation\viewmodels\driver_live_view_model_test.dart
 ```
 
+## 6.1 Backend Smoke Check (ETA + Firebase)
+
+```powershell
+cd "D:\flutter project\smart_monadi"
+./scripts/go_live_backend_smoke.ps1
+```
+
 ## 7) أوامر مفيدة أثناء التطوير
 
 ### 7.1 تنظيف وإعادة تثبيت dependencies
 
 ```powershell
-cd "E:\flutter project\smart_monadi"
+cd "D:\flutter project\smart_monadi"
 flutter clean
 flutter pub get
 ```
@@ -165,7 +172,7 @@ flutter pub get
 
 ```powershell
 flutter devices
-flutter run -d <DEVICE_ID> --dart-define=ETA_SERVICE_URL=http://10.0.2.2:8081 --dart-define=DIRECTIONS_API_KEY=YOUR_GOOGLE_DIRECTIONS_API_KEY
+flutter run -d <DEVICE_ID> --dart-define=ETA_SERVICE_URL=http://10.0.2.2:8081
 ```
 
 ## 8) أخطاء شائعة وحلها
@@ -175,8 +182,8 @@ flutter run -d <DEVICE_ID> --dart-define=ETA_SERVICE_URL=http://10.0.2.2:8081 --
 الحل:
 
 ```powershell
-cd "E:\flutter project\smart_monadi"
-firebase deploy --only firestore:indexes
+cd "D:\flutter project\smart_monadi"
+firebase deploy --only firestore:indexes,firestore:rules
 ```
 
 ثم انتظر حتى يصبح index في Firebase Console حالته `Ready`.
@@ -220,6 +227,6 @@ flutter run --dart-define=ETA_SERVICE_URL=http://10.0.2.2:8081
 ## 10) ملخص سريع لأهم أمر تشغيل
 
 ```powershell
-cd "E:\flutter project\smart_monadi"
-flutter run --dart-define=ETA_SERVICE_URL=http://10.0.2.2:8081 --dart-define=DIRECTIONS_API_KEY=YOUR_GOOGLE_DIRECTIONS_API_KEY
+cd "D:\flutter project\smart_monadi"
+flutter run --dart-define=ETA_SERVICE_URL=http://10.0.2.2:8081
 ```

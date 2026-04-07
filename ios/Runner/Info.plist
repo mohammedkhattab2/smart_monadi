@@ -25,7 +25,7 @@
 	<key>CFBundleVersion</key>
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
 	<key>GMSApiKey</key>
-	<string>AIzaSyD2O73pn8AJVtXmkWRIMgSghRzLyyLB0_c</string>
+	<string>$(MAPS_API_KEY)</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>NSLocationWhenInUseUsageDescription</key>

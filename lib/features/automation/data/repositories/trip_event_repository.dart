@@ -37,16 +37,41 @@ class FirestoreTripEventRepository implements TripEventRepository {
     required String toPhone,
     required String template,
     required Map<String, dynamic> variables,
-  }) {
-    return _smsOutboxRef.add({
-      'passengerId': passengerId,
-      'toPhone': toPhone,
-      'template': template,
-      'variables': variables,
-      'status': 'pending',
-      'createdAt': Timestamp.now(),
-      'nextRetryAt': Timestamp.now(),
-      'attempts': 0,
+    required String idempotencyKey,
+  }) async {
+    final normalizedKey = _normalizeIdempotencyKey(idempotencyKey);
+    final docRef = _smsOutboxRef.doc(normalizedKey);
+
+    await _firestore.runTransaction((tx) async {
+      final existing = await tx.get(docRef);
+      if (existing.exists) {
+        return;
+      }
+
+      tx.set(docRef, {
+        'passengerId': passengerId,
+        'toPhone': toPhone,
+        'template': template,
+        'variables': variables,
+        'status': 'pending',
+        'createdAt': Timestamp.now(),
+        'nextRetryAt': Timestamp.now(),
+        'attempts': 0,
+        'idempotencyKey': normalizedKey,
+      });
     });
+  }
+
+  String _normalizeIdempotencyKey(String value) {
+    final compact = value.trim().toLowerCase();
+    if (compact.isEmpty) {
+      return 'sms_key_unknown';
+    }
+
+    final normalized = compact.replaceAll(RegExp(r'[^a-z0-9_-]'), '_');
+    if (normalized.length <= 128) {
+      return normalized;
+    }
+    return normalized.substring(0, 128);
   }
 }

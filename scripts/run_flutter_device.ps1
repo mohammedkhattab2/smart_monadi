@@ -1,7 +1,8 @@
 Param(
-  [string]$DirectionsApiKey = "AIzaSyDpOwdvxDkDUlRlWCeHaXI-b2RdCJf62BY",
+  [string]$DirectionsApiKey = "",
   [string]$EtaServiceUrl,
-  [string]$DeviceId
+  [string]$DeviceId,
+  [switch]$Release
 )
 
 $ErrorActionPreference = "Stop"
@@ -25,9 +26,24 @@ if ([string]::IsNullOrWhiteSpace($EtaServiceUrl)) {
   $EtaServiceUrl = "http://$localIp`:8081"
 }
 
+$runArgs = @("--dart-define=ETA_SERVICE_URL=$EtaServiceUrl")
+if (-not [string]::IsNullOrWhiteSpace($DirectionsApiKey)) {
+  $runArgs += "--dart-define=DIRECTIONS_API_KEY=$DirectionsApiKey"
+}
+
 if ([string]::IsNullOrWhiteSpace($DeviceId)) {
-  flutter run --dart-define=ETA_SERVICE_URL=$EtaServiceUrl --dart-define=DIRECTIONS_API_KEY=$DirectionsApiKey
+  if ($Release) {
+    flutter run --release @runArgs
+  }
+  else {
+    flutter run @runArgs
+  }
 }
 else {
-  flutter run -d $DeviceId --dart-define=ETA_SERVICE_URL=$EtaServiceUrl --dart-define=DIRECTIONS_API_KEY=$DirectionsApiKey
+  if ($Release) {
+    flutter run --release -d $DeviceId @runArgs
+  }
+  else {
+    flutter run -d $DeviceId @runArgs
+  }
 }

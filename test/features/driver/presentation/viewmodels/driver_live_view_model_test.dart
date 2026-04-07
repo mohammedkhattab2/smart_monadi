@@ -725,6 +725,7 @@ class _FakeTripEventRepository implements TripEventRepository {
     required String toPhone,
     required String template,
     required Map<String, dynamic> variables,
+    required String idempotencyKey,
   }) async {
     smsCalls += 1;
   }

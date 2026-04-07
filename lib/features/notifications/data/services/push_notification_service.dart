@@ -50,10 +50,10 @@ class PushNotificationService {
   Future<void> unregisterUser(String uid) async {
     final token = await _messaging.getToken();
     if (token != null && token.isNotEmpty) {
-      await _firestore.collection('users').doc(uid).set({
+      await _safeSetUserDoc(uid, {
         'fcmTokens': FieldValue.arrayRemove([token]),
         'updatedAt': Timestamp.now(),
-      }, SetOptions(merge: true));
+      });
     }
 
     await _tokenRefreshSubscription?.cancel();
@@ -61,10 +61,25 @@ class PushNotificationService {
   }
 
   Future<void> _upsertToken(String uid, String token) {
-    return _firestore.collection('users').doc(uid).set({
+    return _safeSetUserDoc(uid, {
       'fcmTokens': FieldValue.arrayUnion([token]),
       'updatedAt': Timestamp.now(),
-    }, SetOptions(merge: true));
+    });
+  }
+
+  Future<void> _safeSetUserDoc(String uid, Map<String, dynamic> payload) async {
+    try {
+      await _firestore
+          .collection('users')
+          .doc(uid)
+          .set(payload, SetOptions(merge: true));
+    } on FirebaseException catch (error) {
+      if (error.code == 'permission-denied') {
+        // Ignore transient auth/rules race conditions during sign-out/sign-in.
+        return;
+      }
+      rethrow;
+    }
   }
 
   Future<void> dispose() async {

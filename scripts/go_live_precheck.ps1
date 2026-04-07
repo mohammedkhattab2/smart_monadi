@@ -49,6 +49,12 @@ if (-not (Test-Path "firestore.indexes.json")) {
 }
 Write-Ok "firestore.indexes.json exists"
 
+if (-not (Test-Path "firestore.rules")) {
+  Write-Err "firestore.rules not found"
+  exit 1
+}
+Write-Ok "firestore.rules exists"
+
 if (-not (Test-Path "functions\index.js")) {
   Write-Err "functions/index.js not found"
   exit 1
