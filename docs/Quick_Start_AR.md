@@ -7,6 +7,7 @@
 - Flutter مثبت
 - Android Studio/Emulator جاهز
 - Python 3.10+ مثبت
+- ملف Firebase Android موجود: `android/app/google-services.json`
 
 ## 2) بعد Clone مباشرة
 
@@ -16,6 +17,10 @@ flutter pub get
 Copy-Item assets\env\.env.example assets\env\.env -Force
 Copy-Item eta_service\.env.example eta_service\.env -Force
 ```
+
+تأكد إن الملف ده موجود داخل المشروع:
+
+`android/app/google-services.json`
 
 افتح `eta_service/.env` وضع:
 
@@ -78,3 +83,12 @@ flutter devices
 ```
 
 ثم أعد التشغيل مع `-d <DEVICE_ID>`.
+
+## 6) ملاحظة Firebase مهمة
+
+وجود `android/app/google-services.json` بيسهل التشغيل على Android بشكل كبير لأن التطبيق بيتوصل مباشرة بمشروع Firebase الصح.
+
+لو تسجيل الدخول أو FCM ما اشتغلوش:
+
+- راجع إعدادات SHA-1 / SHA-256 في Firebase Console.
+- تأكد إن `package_name` هو `com.example.smart_monadi`.
