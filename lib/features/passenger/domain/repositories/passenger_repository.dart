@@ -23,6 +23,12 @@ abstract class PassengerRepository {
     double? longitude,
   });
 
+  Future<void> updatePassengerLocation({
+    required String passengerId,
+    required double latitude,
+    required double longitude,
+  });
+
   Future<void> updateGeofenceState({
     required String passengerId,
     required String geofenceState,

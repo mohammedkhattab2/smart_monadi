@@ -46,5 +46,9 @@ app.*.map.json
 
 # Local secrets and machine-specific config
 /android/local.properties
+/android/key.properties
+/android/app/*.jks
+/android/app/*.keystore
+/assets/env/.env
 /eta_service/.env
 /eta_service/.venv/

@@ -89,6 +89,13 @@ class _FakePassengerRepository implements PassengerRepository {
     }
   }
 
+  @override
+  Future<void> updatePassengerLocation({
+    required String passengerId,
+    required double latitude,
+    required double longitude,
+  }) async {}
+
   void releaseUpsert() {
     _holdCompleter?.complete();
     _holdCompleter = null;

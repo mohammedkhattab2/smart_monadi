@@ -8,6 +8,29 @@ class FirestoreOperationsRepository implements OperationsRepository {
 
   final FirebaseFirestore _firestore;
 
+  String _normalizeIdempotencyPart(String value) {
+    final compact = value.trim().toLowerCase();
+    if (compact.isEmpty) {
+      return 'na';
+    }
+    return compact.replaceAll(RegExp(r'[^a-z0-9_-]'), '_');
+  }
+
+  String _buildOpsTestIdempotencyKey({
+    required String phone,
+    required String template,
+  }) {
+    final minuteBucket = DateTime.now().toUtc().millisecondsSinceEpoch ~/ 60000;
+    final safePhone = _normalizeIdempotencyPart(phone);
+    final safeTemplate = _normalizeIdempotencyPart(template);
+    return 'ops_test_${safePhone}_${safeTemplate}_$minuteBucket';
+  }
+
+  String _buildDeadLetterRequeueIdempotencyKey(String deadLetterId) {
+    final safeDeadLetterId = _normalizeIdempotencyPart(deadLetterId);
+    return 'dead_letter_requeue_$safeDeadLetterId';
+  }
+
   @override
   Stream<OperationsMetrics> watchMetricsForDay(String dayKey) {
     return _firestore.collection('sms_metrics').doc(dayKey).snapshots().map((
@@ -105,11 +128,17 @@ class FirestoreOperationsRepository implements OperationsRepository {
     required String name,
     required String pickupTime,
   }) {
+    final idempotencyKey = _buildOpsTestIdempotencyKey(
+      phone: phone,
+      template: template,
+    );
+
     return _firestore.collection('sms_outbox').add({
       'passengerId': 'manual-test',
       'toPhone': phone,
       'template': template,
       'variables': {'name': name, 'pickupTime': pickupTime},
+      'idempotencyKey': idempotencyKey,
       'status': 'pending',
       'attempts': 0,
       'createdAt': Timestamp.now(),
@@ -132,11 +161,14 @@ class FirestoreOperationsRepository implements OperationsRepository {
         ? rawVariables.map((k, v) => MapEntry(k.toString(), v.toString()))
         : const <String, String>{};
 
+    final idempotencyKey = _buildDeadLetterRequeueIdempotencyKey(deadLetter.id);
+
     await _firestore.collection('sms_outbox').add({
       'passengerId': passengerId,
       'toPhone': toPhone,
       'template': template,
       'variables': variables,
+      'idempotencyKey': idempotencyKey,
       'status': 'pending',
       'attempts': 0,
       'createdAt': Timestamp.now(),

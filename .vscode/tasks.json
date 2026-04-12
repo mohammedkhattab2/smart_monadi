@@ -1,0 +1,26 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "SmartMonadi Release Run",
+			"type": "shell",
+			"command": "flutter",
+			"args": [
+				"run",
+				"--release",
+				"--dart-define=ETA_SERVICE_URL=http://192.168.1.4:8081"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "SmartMonadi Maps Logcat Check",
+			"type": "shell",
+			"command": "C:\\Users\\dimak\\AppData\\Local\\Android\\sdk\\platform-tools\\adb.exe",
+			"args": [
+				"logcat",
+				"-d"
+			],
+			"isBackground": false
+		}
+	]
+}

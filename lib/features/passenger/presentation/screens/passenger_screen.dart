@@ -50,6 +50,7 @@ class _PassengerScreenState extends State<PassengerScreen> {
   bool _timelinePrimed = false;
   String _timelineWindow = '24h';
   bool _didPrefill = false;
+  bool _hasLocalLocationSelection = false;
   double? _selectedLatitude;
   double? _selectedLongitude;
   bool _isResolvingLocation = false;
@@ -162,7 +163,7 @@ class _PassengerScreenState extends State<PassengerScreen> {
   }
 
   void _prefillFromProfile(Passenger passenger) {
-    if (_didPrefill) {
+    if (_didPrefill && _hasLocalLocationSelection) {
       return;
     }
 
@@ -171,21 +172,49 @@ class _PassengerScreenState extends State<PassengerScreen> {
     _addressController.text = passenger.address;
     _pickupTimeController.text = passenger.pickupTime;
     _returnTimeController.text = passenger.returnTime;
-    _selectedLatitude = passenger.latitude;
-    _selectedLongitude = passenger.longitude;
+
+    // Keep local manual selection if user changed it in this session.
+    if (!_hasLocalLocationSelection ||
+        _selectedLatitude == null ||
+        _selectedLongitude == null) {
+      _selectedLatitude = passenger.latitude;
+      _selectedLongitude = passenger.longitude;
+    }
+
     _didPrefill = true;
   }
 
   void _queuePrefillFromProfile(Passenger passenger) {
-    if (_didPrefill) {
+    final canHydrateLateLocation =
+        _didPrefill &&
+        !_hasLocalLocationSelection &&
+        (_selectedLatitude == null || _selectedLongitude == null) &&
+        passenger.latitude != null &&
+        passenger.longitude != null;
+
+    if (_didPrefill && !canHydrateLateLocation) {
       return;
     }
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted || _didPrefill) {
+      if (!mounted) {
         return;
       }
-      _prefillFromProfile(passenger);
+
+      final stillCanHydrateLateLocation =
+          _didPrefill &&
+          !_hasLocalLocationSelection &&
+          (_selectedLatitude == null || _selectedLongitude == null) &&
+          passenger.latitude != null &&
+          passenger.longitude != null;
+
+      if (_didPrefill && !stillCanHydrateLateLocation) {
+        return;
+      }
+
+      setState(() {
+        _prefillFromProfile(passenger);
+      });
     });
   }
 
@@ -269,7 +298,10 @@ class _PassengerScreenState extends State<PassengerScreen> {
       setState(() {
         _selectedLatitude = position.latitude;
         _selectedLongitude = position.longitude;
+        _hasLocalLocationSelection = true;
       });
+
+      await _persistSelectedLocation();
     } catch (error) {
       if (!mounted) {
         return;
@@ -315,7 +347,42 @@ class _PassengerScreenState extends State<PassengerScreen> {
     setState(() {
       _selectedLatitude = picked.latitude;
       _selectedLongitude = picked.longitude;
+      _hasLocalLocationSelection = true;
     });
+
+    await _persistSelectedLocation();
+  }
+
+  Future<void> _persistSelectedLocation() async {
+    final lat = _selectedLatitude;
+    final lng = _selectedLongitude;
+    if (lat == null || lng == null) {
+      return;
+    }
+
+    try {
+      await widget.repository.updatePassengerLocation(
+        passengerId: widget.currentUserId,
+        latitude: lat,
+        longitude: lng,
+      );
+
+      if (!mounted) {
+        return;
+      }
+
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('passenger.saved'.tr())));
+    } catch (_) {
+      if (!mounted) {
+        return;
+      }
+
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('states.error_message'.tr())));
+    }
   }
 
   Future<void> _openInGoogleMaps() async {

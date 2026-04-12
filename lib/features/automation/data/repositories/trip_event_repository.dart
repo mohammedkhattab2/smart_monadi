@@ -39,7 +39,7 @@ class FirestoreTripEventRepository implements TripEventRepository {
     required Map<String, dynamic> variables,
     required String idempotencyKey,
   }) async {
-    final normalizedKey = _normalizeIdempotencyKey(idempotencyKey);
+    final normalizedKey = normalizeIdempotencyKeyForDocId(idempotencyKey);
     final docRef = _smsOutboxRef.doc(normalizedKey);
 
     await _firestore.runTransaction((tx) async {
@@ -62,16 +62,34 @@ class FirestoreTripEventRepository implements TripEventRepository {
     });
   }
 
-  String _normalizeIdempotencyKey(String value) {
+  static String normalizeIdempotencyKeyForDocId(String value) {
     final compact = value.trim().toLowerCase();
     if (compact.isEmpty) {
       return 'sms_key_unknown';
     }
 
-    final normalized = compact.replaceAll(RegExp(r'[^a-z0-9_-]'), '_');
-    if (normalized.length <= 128) {
-      return normalized;
+    final normalizedBody = compact.replaceAll(RegExp(r'[^a-z0-9_-]'), '_');
+    final hashSuffix = _stableHash8(compact);
+    final maxBodyLen = 128 - 1 - hashSuffix.length;
+    final body = normalizedBody.length <= maxBodyLen
+        ? normalizedBody
+        : normalizedBody.substring(0, maxBodyLen);
+
+    final composed = '${body}_$hashSuffix';
+    if (composed.length <= 128) {
+      return composed;
     }
-    return normalized.substring(0, 128);
+
+    return composed.substring(0, 128);
+  }
+
+  static String _stableHash8(String value) {
+    var hash = 0x811C9DC5;
+    for (final codeUnit in value.codeUnits) {
+      hash ^= codeUnit;
+      hash = (hash * 0x01000193) & 0xFFFFFFFF;
+    }
+
+    return hash.toRadixString(16).padLeft(8, '0');
   }
 }

@@ -1,6 +1,7 @@
 Param(
   [string]$DirectionsApiKey = "",
   [string]$EtaServiceUrl,
+  [string]$DirectionsBackendUrl,
   [string]$DeviceId,
   [switch]$Release
 )
@@ -27,6 +28,15 @@ if ([string]::IsNullOrWhiteSpace($EtaServiceUrl)) {
 }
 
 $runArgs = @("--dart-define=ETA_SERVICE_URL=$EtaServiceUrl")
+
+if ([string]::IsNullOrWhiteSpace($DirectionsBackendUrl)) {
+  $DirectionsBackendUrl = $EtaServiceUrl
+}
+
+if (-not [string]::IsNullOrWhiteSpace($DirectionsBackendUrl)) {
+  $runArgs += "--dart-define=DIRECTIONS_BACKEND_URL=$DirectionsBackendUrl"
+}
+
 if (-not [string]::IsNullOrWhiteSpace($DirectionsApiKey)) {
   $runArgs += "--dart-define=DIRECTIONS_API_KEY=$DirectionsApiKey"
 }

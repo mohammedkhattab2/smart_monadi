@@ -37,6 +37,7 @@ class DriverLiveViewModel extends ChangeNotifier {
   final RunGeofenceAutomationUseCase _runGeofenceAutomationUseCase;
 
   bool _isTracking = false;
+  bool _trackingEnabled = true;
   String? _trackingError;
   StreamSubscription<dynamic>? _positionSubscription;
   StreamSubscription<BusLocation?>? _busSubscription;
@@ -45,11 +46,13 @@ class DriverLiveViewModel extends ChangeNotifier {
   List<Passenger> _latestPassengers = const [];
   BusLocation? _latestBusLocation;
   final Set<String> _manualPickupInProgress = <String>{};
+  final Set<String> _scheduleUpdateInProgress = <String>{};
   final Map<String, _PassengerScheduleSnapshot> _knownSchedules =
       <String, _PassengerScheduleSnapshot>{};
   final List<DriverScheduleAlert> _scheduleAlerts = <DriverScheduleAlert>[];
 
   bool get isTracking => _isTracking;
+  bool get isTrackingEnabled => _trackingEnabled;
   String? get trackingError => _trackingError;
   List<DriverScheduleAlert> get scheduleAlerts =>
       List.unmodifiable(_scheduleAlerts);
@@ -62,6 +65,10 @@ class DriverLiveViewModel extends ChangeNotifier {
 
   bool isManualPickupInProgress(String passengerId) {
     return _manualPickupInProgress.contains(passengerId);
+  }
+
+  bool isScheduleUpdateInProgress(String passengerId) {
+    return _scheduleUpdateInProgress.contains(passengerId);
   }
 
   String statusKey(Passenger passenger) {
@@ -151,8 +158,40 @@ class DriverLiveViewModel extends ChangeNotifier {
     }
   }
 
+  Future<String?> updatePassengerSchedule({
+    required Passenger passenger,
+    required String pickupTime,
+    required String returnTime,
+  }) async {
+    if (_scheduleUpdateInProgress.contains(passenger.id)) {
+      return 'driver.schedule_update_failed';
+    }
+
+    _scheduleUpdateInProgress.add(passenger.id);
+    notifyListeners();
+
+    try {
+      await _passengerRepository.upsertPassenger(
+        id: passenger.id,
+        name: passenger.name,
+        phone: passenger.phone,
+        address: passenger.address,
+        pickupTime: pickupTime,
+        returnTime: returnTime,
+        latitude: passenger.latitude,
+        longitude: passenger.longitude,
+      );
+      return null;
+    } catch (_) {
+      return 'driver.schedule_update_failed';
+    } finally {
+      _scheduleUpdateInProgress.remove(passenger.id);
+      notifyListeners();
+    }
+  }
+
   Future<void> startTracking() async {
-    if (_isTracking) {
+    if (!_trackingEnabled || _isTracking) {
       return;
     }
 
@@ -184,10 +223,42 @@ class DriverLiveViewModel extends ChangeNotifier {
     _positionSubscription = _locationService.watchPosition().listen(
       _locationRepository.pushCurrentLocation,
       onError: (_) {
+        _isTracking = false;
         _trackingError = 'driver.location_error';
         notifyListeners();
       },
     );
+  }
+
+  Future<void> stopTracking() async {
+    await _positionSubscription?.cancel();
+    _positionSubscription = null;
+
+    await _busSubscription?.cancel();
+    _busSubscription = null;
+
+    await _passengerSubscription?.cancel();
+    _passengerSubscription = null;
+
+    _isTracking = false;
+    notifyListeners();
+  }
+
+  Future<void> setTrackingEnabled(bool enabled) async {
+    if (_trackingEnabled == enabled) {
+      return;
+    }
+
+    _trackingEnabled = enabled;
+    _trackingError = null;
+    notifyListeners();
+
+    if (enabled) {
+      await startTracking();
+      return;
+    }
+
+    await stopTracking();
   }
 
   Future<void> _runAutomation() async {

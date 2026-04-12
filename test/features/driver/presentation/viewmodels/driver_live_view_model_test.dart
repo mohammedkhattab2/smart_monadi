@@ -179,6 +179,7 @@ void main() {
         harness.locationService.emitError(Exception('location stream failed'));
         await Future<void>.delayed(Duration.zero);
 
+        expect(vm.isTracking, isFalse);
         expect(vm.trackingError, 'driver.location_error');
 
         vm.dispose();
@@ -530,6 +531,114 @@ void main() {
       vm.dispose();
       harness.dispose();
     });
+
+    test('setTrackingEnabled(false) stops all active streams', () async {
+      final harness = _TestHarness()..locationService.hasPermission = true;
+      final vm = harness.createViewModel();
+
+      await vm.startTracking();
+      expect(vm.isTrackingEnabled, isTrue);
+      expect(vm.isTracking, isTrue);
+
+      await vm.setTrackingEnabled(false);
+
+      expect(vm.isTrackingEnabled, isFalse);
+      expect(vm.isTracking, isFalse);
+
+      harness.locationService.emitPosition(_testPosition());
+      await Future<void>.delayed(Duration.zero);
+      expect(harness.locationRepository.pushCurrentLocationCalls, 0);
+
+      vm.dispose();
+      harness.dispose();
+    });
+
+    test('setTrackingEnabled(true) starts tracking again', () async {
+      final harness = _TestHarness()..locationService.hasPermission = true;
+      final vm = harness.createViewModel();
+
+      await vm.setTrackingEnabled(false);
+      expect(vm.isTracking, isFalse);
+
+      await vm.setTrackingEnabled(true);
+
+      expect(vm.isTrackingEnabled, isTrue);
+      expect(vm.isTracking, isTrue);
+      expect(harness.locationService.ensurePermissionCalls, 1);
+
+      vm.dispose();
+      harness.dispose();
+    });
+
+    test('startTracking does nothing while tracking is disabled', () async {
+      final harness = _TestHarness()..locationService.hasPermission = true;
+      final vm = harness.createViewModel();
+
+      await vm.setTrackingEnabled(false);
+      await vm.startTracking();
+
+      expect(vm.isTracking, isFalse);
+      expect(harness.locationService.ensurePermissionCalls, 0);
+      expect(harness.locationService.watchPositionCalls, 0);
+
+      vm.dispose();
+      harness.dispose();
+    });
+
+    test('updatePassengerSchedule updates repository with new times', () async {
+      final harness = _TestHarness();
+      final vm = harness.createViewModel();
+      const passenger = Passenger(
+        id: 'p-schedule-1',
+        name: 'Ali',
+        phone: '+201111111111',
+        address: 'Cairo',
+        pickupTime: '07:30',
+        returnTime: '14:00',
+        latitude: 30.0,
+        longitude: 31.0,
+        updatedAtMillis: 1,
+      );
+
+      final result = await vm.updatePassengerSchedule(
+        passenger: passenger,
+        pickupTime: '08:15',
+        returnTime: '15:30',
+      );
+
+      expect(result, isNull);
+      expect(harness.passengerRepository.upsertPassengerCalls, 1);
+      expect(harness.passengerRepository.lastUpsertPickupTime, '08:15');
+      expect(harness.passengerRepository.lastUpsertReturnTime, '15:30');
+      expect(vm.isScheduleUpdateInProgress(passenger.id), isFalse);
+    });
+
+    test(
+      'updatePassengerSchedule returns failure when repository throws',
+      () async {
+        final harness = _TestHarness()
+          ..passengerRepository.throwOnUpsert = true;
+        final vm = harness.createViewModel();
+        const passenger = Passenger(
+          id: 'p-schedule-2',
+          name: 'Mona',
+          phone: '+202222222222',
+          address: 'Giza',
+          pickupTime: '07:30',
+          returnTime: '14:00',
+          updatedAtMillis: 1,
+        );
+
+        final result = await vm.updatePassengerSchedule(
+          passenger: passenger,
+          pickupTime: '08:00',
+          returnTime: '15:00',
+        );
+
+        expect(result, 'driver.schedule_update_failed');
+        expect(vm.isScheduleUpdateInProgress(passenger.id), isFalse);
+      },
+    );
   });
 }
 
@@ -635,11 +744,15 @@ class _FakePassengerRepository implements PassengerRepository {
   final StreamController<List<Passenger>> _passengersController =
       StreamController<List<Passenger>>.broadcast();
   bool throwOnMarkPickedUp = false;
+  bool throwOnUpsert = false;
   int markPickedUpCalls = 0;
   int watchPassengersCalls = 0;
   int updateGeofenceCalls = 0;
+  int upsertPassengerCalls = 0;
   String? lastMarkedPassengerId;
   String? lastGeofenceState;
+  String? lastUpsertPickupTime;
+  String? lastUpsertReturnTime;
 
   @override
   Future<void> markPickedUp({
@@ -673,6 +786,20 @@ class _FakePassengerRepository implements PassengerRepository {
     String returnTime = '',
     double? latitude,
     double? longitude,
+  }) async {
+    if (throwOnUpsert) {
+      throw StateError('upsert failure');
+    }
+    upsertPassengerCalls += 1;
+    lastUpsertPickupTime = pickupTime;
+    lastUpsertReturnTime = returnTime;
+  }
+
+  @override
+  Future<void> updatePassengerLocation({
+    required String passengerId,
+    required double latitude,
+    required double longitude,
   }) async {}
 
   @override

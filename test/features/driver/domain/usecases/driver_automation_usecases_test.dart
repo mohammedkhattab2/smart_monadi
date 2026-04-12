@@ -178,6 +178,13 @@ class _FakePassengerRepository implements PassengerRepository {
   }) async {}
 
   @override
+  Future<void> updatePassengerLocation({
+    required String passengerId,
+    required double latitude,
+    required double longitude,
+  }) async {}
+
+  @override
   Stream<Passenger?> watchPassengerById(String id) {
     return const Stream<Passenger?>.empty();
   }

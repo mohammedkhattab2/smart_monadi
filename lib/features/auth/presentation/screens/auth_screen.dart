@@ -23,7 +23,6 @@ class _AuthScreenState extends State<AuthScreen>
   static final RegExp _emailRegex = RegExp(
     r'^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$',
   );
-  static final RegExp _timeRegex = RegExp(r'^([01]\d|2[0-3]):[0-5]\d$');
 
   late final TabController _tabController;
   late final SignInUseCase _signInUseCase;
@@ -35,8 +34,6 @@ class _AuthScreenState extends State<AuthScreen>
   final _registerNameController = TextEditingController();
   final _registerPhoneController = TextEditingController();
   final _registerAddressController = TextEditingController();
-  final _registerPickupTimeController = TextEditingController();
-  final _registerReturnTimeController = TextEditingController();
   UserRole _registerRole = UserRole.passenger;
   bool _isLoading = false;
 
@@ -58,8 +55,6 @@ class _AuthScreenState extends State<AuthScreen>
     _registerNameController.dispose();
     _registerPhoneController.dispose();
     _registerAddressController.dispose();
-    _registerPickupTimeController.dispose();
-    _registerReturnTimeController.dispose();
     super.dispose();
   }
 
@@ -69,9 +64,7 @@ class _AuthScreenState extends State<AuthScreen>
     }
 
     return _registerPhoneController.text.trim().isNotEmpty &&
-        _registerAddressController.text.trim().isNotEmpty &&
-        _registerPickupTimeController.text.trim().isNotEmpty &&
-        _registerReturnTimeController.text.trim().isNotEmpty;
+        _registerAddressController.text.trim().isNotEmpty;
   }
 
   String? _validateSignInInputs() {
@@ -99,14 +92,6 @@ class _AuthScreenState extends State<AuthScreen>
     }
     if (password.length < 6) {
       return 'auth.error_password_short'.tr();
-    }
-
-    if (_registerRole == UserRole.passenger) {
-      final pickup = _registerPickupTimeController.text.trim();
-      final returning = _registerReturnTimeController.text.trim();
-      if (!_timeRegex.hasMatch(pickup) || !_timeRegex.hasMatch(returning)) {
-        return 'auth.error_time_invalid'.tr();
-      }
     }
 
     return null;
@@ -355,20 +340,6 @@ class _AuthScreenState extends State<AuthScreen>
                     labelText: 'auth.passenger_address'.tr(),
                   ),
                 ),
-                SizedBox(height: AppSpacing.xs.h),
-                TextField(
-                  controller: _registerPickupTimeController,
-                  decoration: InputDecoration(
-                    labelText: 'auth.passenger_pickup_time'.tr(),
-                  ),
-                ),
-                SizedBox(height: AppSpacing.xs.h),
-                TextField(
-                  controller: _registerReturnTimeController,
-                  decoration: InputDecoration(
-                    labelText: 'auth.passenger_return_time'.tr(),
-                  ),
-                ),
               ],
               SizedBox(height: AppSpacing.sm.h),
               SizedBox(
@@ -405,10 +376,6 @@ class _AuthScreenState extends State<AuthScreen>
                               passengerPhone: _registerPhoneController.text
                                   .trim(),
                               passengerAddress: _registerAddressController.text
-                                  .trim(),
-                              pickupTime: _registerPickupTimeController.text
-                                  .trim(),
-                              returnTime: _registerReturnTimeController.text
                                   .trim(),
                             );
                           });

@@ -16,6 +16,7 @@ const TWILIO_FROM_NUMBER = defineSecret('TWILIO_FROM_NUMBER');
 
 const MAX_ATTEMPTS = 3;
 const PROCESSING_LOCK_MINUTES = 2;
+const IDEMPOTENCY_PENDING_RETRY_SECONDS = 30;
 
 function normalizeSmsError(error) {
   const message = error instanceof Error ? error.message : 'Unknown SMS error';
@@ -69,6 +70,122 @@ async function addDeliveryEvent(messageId, type, payload = {}) {
     payload,
     createdAt: admin.firestore.FieldValue.serverTimestamp(),
   });
+}
+
+function idempotencyDocRef(idempotencyKey) {
+  return db.collection('sms_idempotency').doc(idempotencyKey);
+}
+
+async function claimIdempotency(idempotencyKey, messageId) {
+  if (!idempotencyKey) {
+    return { status: 'no_key' };
+  }
+
+  const key = idempotencyKey.toString().trim();
+  if (!key) {
+    return { status: 'no_key' };
+  }
+
+  const docRef = idempotencyDocRef(key);
+  return db.runTransaction(async (tx) => {
+    const now = admin.firestore.Timestamp.now();
+    const lockExpiry = admin.firestore.Timestamp.fromDate(
+      new Date(Date.now() + PROCESSING_LOCK_MINUTES * 60 * 1000),
+    );
+
+    const snap = await tx.get(docRef);
+    if (!snap.exists) {
+      tx.set(docRef, {
+        messageId,
+        status: 'processing',
+        lockExpiresAt: lockExpiry,
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+      return { status: 'acquired' };
+    }
+
+    const data = snap.data() || {};
+    const ownerMessageId = (data.messageId || '').toString();
+    const status = (data.status || '').toString();
+    const lockExpiresAt = data.lockExpiresAt;
+
+    const hasActiveLock =
+      lockExpiresAt instanceof admin.firestore.Timestamp &&
+      lockExpiresAt.toMillis() > now.toMillis();
+
+    if (ownerMessageId === messageId) {
+      tx.set(
+        docRef,
+        {
+          status: 'processing',
+          lockExpiresAt: lockExpiry,
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        },
+        { merge: true },
+      );
+      return { status: 'acquired' };
+    }
+
+    if (status === 'sent') {
+      return {
+        status: 'already_sent',
+        ownerMessageId,
+      };
+    }
+
+    if (!hasActiveLock) {
+      tx.set(
+        docRef,
+        {
+          messageId,
+          status: 'processing',
+          lockExpiresAt: lockExpiry,
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        },
+        { merge: true },
+      );
+      return { status: 'acquired' };
+    }
+
+    return {
+      status: 'in_progress',
+      ownerMessageId,
+    };
+  });
+}
+
+async function markIdempotencySent(idempotencyKey, messageId) {
+  if (!idempotencyKey) {
+    return;
+  }
+
+  await idempotencyDocRef(idempotencyKey).set(
+    {
+      messageId,
+      status: 'sent',
+      sentAt: admin.firestore.FieldValue.serverTimestamp(),
+      lockExpiresAt: admin.firestore.FieldValue.delete(),
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    },
+    { merge: true },
+  );
+}
+
+async function markIdempotencyFailed(idempotencyKey, messageId) {
+  if (!idempotencyKey) {
+    return;
+  }
+
+  await idempotencyDocRef(idempotencyKey).set(
+    {
+      messageId,
+      status: 'failed',
+      lockExpiresAt: admin.firestore.FieldValue.delete(),
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    },
+    { merge: true },
+  );
 }
 
 async function moveToDeadLetter(messageId, data) {
@@ -166,6 +283,7 @@ async function sendSmsAndUpdate(messageId, payload, secrets) {
   const docRef = db.collection('sms_outbox').doc(messageId);
   const currentStatus = (payload.status || '').toString();
   const currentAttempts = Number(payload.attempts || 0);
+  const idempotencyKey = (payload.idempotencyKey || '').toString().trim();
 
   if (currentStatus === 'sent') {
     return;
@@ -202,6 +320,45 @@ async function sendSmsAndUpdate(messageId, payload, secrets) {
     return;
   }
 
+  const claim = await claimIdempotency(idempotencyKey, messageId);
+  if (claim.status === 'already_sent') {
+    await docRef.set(
+      {
+        status: 'duplicate_skipped',
+        duplicateOfMessageId: claim.ownerMessageId || null,
+        processingBy: admin.firestore.FieldValue.delete(),
+        processingAt: admin.firestore.FieldValue.delete(),
+        lockExpiresAt: admin.firestore.FieldValue.delete(),
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      },
+      { merge: true },
+    );
+    await addDeliveryEvent(messageId, 'duplicate_skipped', {
+      idempotencyKey,
+      duplicateOfMessageId: claim.ownerMessageId || null,
+    });
+    await incrementMetric('duplicateSkippedCount');
+    return;
+  }
+
+  if (claim.status === 'in_progress') {
+    const retryAt = admin.firestore.Timestamp.fromDate(
+      new Date(Date.now() + IDEMPOTENCY_PENDING_RETRY_SECONDS * 1000),
+    );
+    await docRef.set(
+      {
+        status: 'pending',
+        nextRetryAt: retryAt,
+        processingBy: admin.firestore.FieldValue.delete(),
+        processingAt: admin.firestore.FieldValue.delete(),
+        lockExpiresAt: admin.firestore.FieldValue.delete(),
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      },
+      { merge: true },
+    );
+    return;
+  }
+
   const body = renderSmsBody(payload.template, payload.variables);
   const client = twilio(secrets.accountSid, secrets.authToken);
 
@@ -226,6 +383,8 @@ async function sendSmsAndUpdate(messageId, payload, secrets) {
       },
       { merge: true },
     );
+
+    await markIdempotencySent(idempotencyKey, messageId);
 
     logger.info('SMS sent', { messageId, sid: result.sid, to: payload.toPhone });
     await addDeliveryEvent(messageId, 'sent', {
@@ -260,6 +419,8 @@ async function sendSmsAndUpdate(messageId, payload, secrets) {
       },
       { merge: true },
     );
+
+    await markIdempotencyFailed(idempotencyKey, messageId);
 
     if (attempts >= MAX_ATTEMPTS) {
       await moveToDeadLetter(messageId, {

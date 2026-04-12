@@ -51,7 +51,8 @@ Copy-Item assets\env\.env.example assets\env\.env -Force
 ```powershell
 cd "D:\flutter project\smart_monadi"
 flutter pub get
-flutter run --dart-define=ETA_SERVICE_URL=http://192.168.1.4:8081
+flutter devices
+flutter run -d <DEVICE_ID> --dart-define=ETA_SERVICE_URL=http://192.168.1.4:8081 --dart-define=DIRECTIONS_BACKEND_URL=http://192.168.1.4:8081
 ```
 
 ## 3) تشغيل الجهاز الحقيقي (نسخ سريع)
@@ -61,7 +62,8 @@ flutter run --dart-define=ETA_SERVICE_URL=http://192.168.1.4:8081
 ```powershell
 cd "D:\flutter project\smart_monadi"
 flutter pub get
-flutter run --release --dart-define=ETA_SERVICE_URL=http://192.168.1.4:8081
+flutter devices
+flutter run -d <DEVICE_ID> --release --dart-define=ETA_SERVICE_URL=http://192.168.1.4:8081 --dart-define=DIRECTIONS_BACKEND_URL=http://192.168.1.4:8081
 ```
 
 بديل تلقائي (PowerShell) لاكتشاف الـ IP وتشغيل التطبيق مباشرة:
@@ -77,16 +79,20 @@ if (-not $IP) {
 	exit 1
 }
 Write-Host "Using local IP: $IP"
-flutter run --release --dart-define="ETA_SERVICE_URL=http://$IP:8081"
+flutter devices
+flutter run -d <DEVICE_ID> --release --dart-define="ETA_SERVICE_URL=http://$IP:8081" --dart-define="DIRECTIONS_BACKEND_URL=http://$IP:8081"
 ```
 
 مهم:
 - غيّر `YOUR_LOCAL_IP` إلى IP جهازك الفعلي على نفس الشبكة.
 - تشغيل Release يقلل مشاكل Firebase Auth/Recaptcha المرتبطة بوضع Debug.
+- إذا عندك أكثر من جهاز متصل (Mobile + Windows + Chrome)، لازم تحدد `-d <DEVICE_ID>` لتفادي فشل التشغيل.
+- الأفضل في هذا المشروع استخدام `DIRECTIONS_BACKEND_URL` بدل تمرير `DIRECTIONS_API_KEY` في العميل.
 
 لو الأمر فشل:
 - تأكد أن خدمة ETA شغالة على نفس الـ IP والـ Port `8081`.
 - تأكد أن الموبايل والكمبيوتر على نفس شبكة Wi-Fi.
+- لو `/directions` يرجّع `REQUEST_DENIED`: استخدم Server API Key صالح للـ Web Service (مش Android-restricted)، وفعّل `Directions API` + `Routes API` + Billing في Google Cloud.
 
 ## 4) أهم ملاحظة
 

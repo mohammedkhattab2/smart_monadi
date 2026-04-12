@@ -104,6 +104,19 @@ class FirestorePassengerRepository implements PassengerRepository {
   }
 
   @override
+  Future<void> updatePassengerLocation({
+    required String passengerId,
+    required double latitude,
+    required double longitude,
+  }) {
+    return _passengersRef.doc(passengerId).set({
+      'latitude': latitude,
+      'longitude': longitude,
+      'updatedAt': Timestamp.now(),
+    }, SetOptions(merge: true));
+  }
+
+  @override
   Future<void> updateGeofenceState({
     required String passengerId,
     required String geofenceState,

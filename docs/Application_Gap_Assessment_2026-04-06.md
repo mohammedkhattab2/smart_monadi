@@ -77,24 +77,26 @@
   - SMS queue lifecycle
 
 ### 2.2 تغطية اختبارات غير كافية جدًا
-الحالة الحالية: يوجد اختبار واحد بسيط للـ Passenger entity فقط.
+الحالة الحالية: **تحسن كبير وتم توسيع التغطية** (Driver/Operations/Automation/Auth use-cases + Widget tests).
 
 المطلوب:
-- إضافة اختبارات ViewModel للمنطق الحرج:
-  - DriverLiveViewModel automation paths
-  - Auth input validation paths
-  - Operations filters/requeue logic
-- إضافة widget tests للشاشات الأساسية.
+- الاستمرار في إضافة اختبارات لمسارات UI الحساسة المعتمدة على platform plugins (خصوصًا تسجيل الراكب الكامل داخل AuthScreen).
+- إضافة integration test موجه لتدفق end-to-end محاكي (login -> tracking -> automation -> sms_outbox).
 
 مرجع:
-- test/widget_test.dart
+- test/features/
 
 ### 2.3 حماية أقوى من التكرار في أتمتة الـ SMS
-الحالة الحالية: يوجد منطق جيد للتعامل مع retry/lock، لكن يلزم تدقيق production-ready لمنع أي enqueue duplicates في ظروف edge cases (network jitter/duplicate triggers).
+الحالة الحالية: **تم التنفيذ**.
 
-المطلوب:
-- وضع idempotency key واضح لرسائل outbox لكل نوع حدث (approaching/arrival).
-- إضافة guard rules أو dedupe check قبل enqueue.
+ما تم تطبيقه:
+- `idempotencyKey` ممرّر من مسارات الأتمتة الأساسية وكذلك المسارات اليدوية (Operations).
+- إضافة dedupe guard داخل Firebase Functions قبل الإرسال الفعلي.
+- دعم `duplicate_skipped` عند اكتشاف رسالة مكررة تم إرسالها بالفعل.
+- إضافة lock expiry لمسار idempotency لمنع التعليق عند سقوط worker أثناء المعالجة.
+
+المطلوب المتبقي:
+- مراقبة metrics/events في بيئة التشغيل للتأكد من انخفاض حالات التكرار عمليًا.
 
 ---
 
@@ -117,14 +119,10 @@
 - highlights أقوى للحالات الحرجة مع قواعد ألوان موحدة.
 
 ### 2.6 تحسين README التشغيلي
-الحالة الحالية: README ما يزال قالب Flutter افتراضي تقريبًا.
+الحالة الحالية: **تم التنفيذ**.
 
 المطلوب:
-- إعداد المشروع خطوة بخطوة:
-  - Flutter/Firebase setup
-  - functions secrets
-  - run/debug commands
-  - known limitations
+- الحفاظ على تحديث README مع أي تغييرات تشغيلية جديدة (خصوصًا أسرار البيئة وأوامر السكربتات).
 
 مرجع:
 - README.md

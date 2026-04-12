@@ -7,6 +7,7 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:smart_monadi/app/config/runtime_env.dart';
 import 'package:smart_monadi/app/design/app_primitives.dart';
 import 'package:smart_monadi/app/design/design_tokens.dart';
+import 'package:smart_monadi/features/driver/data/services/backend_directions_route_service.dart';
 import 'package:smart_monadi/features/driver/data/services/google_directions_route_service.dart';
 import 'package:smart_monadi/features/driver/domain/services/route_directions_service.dart';
 import 'package:smart_monadi/features/driver/presentation/viewmodels/driver_live_view_model.dart';
@@ -26,30 +27,46 @@ class DriverScreen extends StatefulWidget {
 class _DriverScreenState extends State<DriverScreen>
     with WidgetsBindingObserver {
   static final _directionsApiKey = RuntimeEnv.directionsApiKey;
+  static final _directionsBackendUrl = RuntimeEnv.directionsBackendUrl;
+  static final RegExp _timeRegex = RegExp(r'^([01]\d|2[0-3]):[0-5]\d$');
 
   late final DriverLiveViewModel _liveViewModel;
   late final RouteDirectionsService? _routeDirectionsService;
   StreamSubscription<List<Passenger>>? _passengerChangesSubscription;
   final Map<String, Future<Set<Polyline>>> _routePolylineCache =
       <String, Future<Set<Polyline>>>{};
+  bool _alertsExpanded = false;
+  late final Stream<List<Passenger>> _passengersStream;
+  late final Stream<BusLocation?> _busLocationStream;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _liveViewModel = widget.viewModel;
-    _routeDirectionsService = _directionsApiKey.isEmpty
-        ? null
-        : GoogleDirectionsRouteService(apiKey: _directionsApiKey);
+    if (_directionsApiKey.isNotEmpty) {
+      _routeDirectionsService = GoogleDirectionsRouteService(
+        apiKey: _directionsApiKey,
+      );
+    } else if (_directionsBackendUrl.isNotEmpty) {
+      _routeDirectionsService = BackendDirectionsRouteService(
+        baseUrl: _directionsBackendUrl,
+      );
+    } else {
+      _routeDirectionsService = null;
+    }
+    _passengersStream = _liveViewModel.watchPassengers();
+    _busLocationStream = _liveViewModel.watchBusLocation();
     _liveViewModel.startTracking();
-    _passengerChangesSubscription = _liveViewModel.watchPassengers().listen(
+    _passengerChangesSubscription = _passengersStream.listen(
       _liveViewModel.onPassengerSchedulesSnapshot,
     );
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed) {
+    if (state == AppLifecycleState.resumed &&
+        _liveViewModel.isTrackingEnabled) {
       _liveViewModel.startTracking();
     }
   }
@@ -85,7 +102,7 @@ class _DriverScreenState extends State<DriverScreen>
     List<Passenger> passengers,
     BusLocation? busLocation,
   ) {
-    final active = _scheduledPassengers(passengers)
+    final active = passengers
         .where((p) {
           return !(p.isPickedUp || p.geofenceState == 'picked_up') &&
               p.latitude != null &&
@@ -97,57 +114,13 @@ class _DriverScreenState extends State<DriverScreen>
     return sorted.take(5).toList(growable: false);
   }
 
-  List<Passenger> _scheduledPassengers(List<Passenger> passengers) {
-    final now = DateTime.now();
-    return passengers
-        .where((p) => _isScheduledNow(p, now))
-        .toList(growable: false);
-  }
-
-  bool _isScheduledNow(Passenger passenger, DateTime now) {
-    final pickupMinutes = _parseHm(passenger.pickupTime);
-    final returnMinutes = _parseHm(passenger.returnTime);
-    if (pickupMinutes == null && returnMinutes == null) {
-      return false;
-    }
-
-    final nowMinutes = now.hour * 60 + now.minute;
-    const tolerance = 90;
-
-    if (pickupMinutes != null &&
-        (nowMinutes - pickupMinutes).abs() <= tolerance) {
-      return true;
-    }
-
-    if (returnMinutes != null &&
-        (nowMinutes - returnMinutes).abs() <= tolerance) {
-      return true;
-    }
-
-    return false;
-  }
-
-  int? _parseHm(String value) {
-    final raw = value.trim();
-    if (raw.isEmpty) {
-      return null;
-    }
-
-    final parts = raw.split(':');
-    if (parts.length != 2) {
-      return null;
-    }
-
-    final h = int.tryParse(parts[0]);
-    final m = int.tryParse(parts[1]);
-    if (h == null || m == null || h < 0 || h > 23 || m < 0 || m > 59) {
-      return null;
-    }
-
-    return h * 60 + m;
-  }
-
   Set<Marker> _buildMapMarkers(BusLocation busLocation, List<Passenger> route) {
+    final latestPassengerId = route.isEmpty
+        ? null
+        : route
+              .reduce((a, b) => a.updatedAtMillis >= b.updatedAtMillis ? a : b)
+              .id;
+
     final markers = <Marker>{
       Marker(
         markerId: const MarkerId('bus_current_location'),
@@ -162,7 +135,9 @@ class _DriverScreenState extends State<DriverScreen>
           position: LatLng(passenger.latitude!, passenger.longitude!),
           infoWindow: InfoWindow(title: passenger.name),
           icon: BitmapDescriptor.defaultMarkerWithHue(
-            BitmapDescriptor.hueAzure,
+            passenger.id == latestPassengerId
+                ? BitmapDescriptor.hueGreen
+                : BitmapDescriptor.hueAzure,
           ),
         ),
       );
@@ -338,6 +313,107 @@ class _DriverScreenState extends State<DriverScreen>
     ).showSnackBar(SnackBar(content: Text('driver.manual_pickup_done'.tr())));
   }
 
+  Future<void> _editPassengerSchedule(Passenger passenger) async {
+    final pickupController = TextEditingController(text: passenger.pickupTime);
+    final returnController = TextEditingController(text: passenger.returnTime);
+    String? validationError;
+
+    final updated = await showDialog<(String, String)>(
+      context: context,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              title: Text('driver.edit_schedule_title'.tr()),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextField(
+                    controller: pickupController,
+                    keyboardType: TextInputType.datetime,
+                    decoration: InputDecoration(
+                      labelText: 'driver.alert_pickup'.tr(),
+                      hintText: 'HH:mm',
+                    ),
+                  ),
+                  SizedBox(height: AppSpacing.xs.h),
+                  TextField(
+                    controller: returnController,
+                    keyboardType: TextInputType.datetime,
+                    decoration: InputDecoration(
+                      labelText: 'driver.alert_return'.tr(),
+                      hintText: 'HH:mm',
+                    ),
+                  ),
+                  if (validationError != null) ...[
+                    SizedBox(height: AppSpacing.xs.h),
+                    Text(
+                      validationError!,
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: Theme.of(context).colorScheme.error,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  child: Text('driver.cancel'.tr()),
+                ),
+                FilledButton(
+                  onPressed: () {
+                    final pickup = pickupController.text.trim();
+                    final returning = returnController.text.trim();
+
+                    final isPickupValid = _timeRegex.hasMatch(pickup);
+                    final isReturnValid =
+                        returning.isEmpty || _timeRegex.hasMatch(returning);
+
+                    if (!isPickupValid || !isReturnValid) {
+                      setDialogState(() {
+                        validationError = 'driver.edit_schedule_invalid'.tr();
+                      });
+                      return;
+                    }
+
+                    Navigator.of(context).pop((pickup, returning));
+                  },
+                  child: Text('driver.confirm'.tr()),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+
+    if (updated == null || !mounted) {
+      return;
+    }
+
+    final errorKey = await _liveViewModel.updatePassengerSchedule(
+      passenger: passenger,
+      pickupTime: updated.$1,
+      returnTime: updated.$2,
+    );
+
+    if (!mounted) {
+      return;
+    }
+
+    if (errorKey != null) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(errorKey.tr())));
+      return;
+    }
+
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text('driver.schedule_update_done'.tr())));
+  }
+
   @override
   Widget build(BuildContext context) {
     return AnimatedBuilder(
@@ -351,113 +427,156 @@ class _DriverScreenState extends State<DriverScreen>
                 child: AppSectionCard(
                   icon: Icons.map_outlined,
                   title: 'driver.map_title'.tr(),
-                  child: SizedBox(
-                    height: 220.h,
-                    child: StreamBuilder<BusLocation?>(
-                      stream: _liveViewModel.watchBusLocation(),
-                      builder: (context, snapshot) {
-                        final busLocation = snapshot.data;
-
-                        if (_liveViewModel.trackingError != null) {
-                          return AppStateCard(
-                            icon: Icons.location_off_outlined,
-                            title: 'states.error_title'.tr(),
-                            message: _liveViewModel.trackingError!.tr(),
-                            actionLabel: 'actions.retry'.tr(),
-                            onAction: _liveViewModel.startTracking,
-                          );
-                        }
-
-                        if (snapshot.hasError) {
-                          return AppStateCard(
-                            icon: Icons.error_outline,
-                            title: 'states.error_title'.tr(),
-                            message: 'states.error_message'.tr(),
-                            actionLabel: 'actions.retry'.tr(),
-                            onAction: _liveViewModel.startTracking,
-                          );
-                        }
-
-                        if (busLocation == null) {
-                          return Padding(
-                            padding: EdgeInsets.all(AppSpacing.xs.w),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                AppSkeletonBox(
-                                  height: 150.h,
-                                  radius: AppRadius.sm,
-                                ),
-                                SizedBox(height: AppSpacing.xs.h),
-                                AppSkeletonBox(height: 10.h, width: 160.w),
-                              ],
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              _liveViewModel.isTrackingEnabled
+                                  ? 'driver.tracking_on'.tr()
+                                  : 'driver.tracking_off'.tr(),
+                              style: Theme.of(context).textTheme.bodyMedium,
                             ),
-                          );
-                        }
+                          ),
+                          Switch.adaptive(
+                            value: _liveViewModel.isTrackingEnabled,
+                            onChanged: (value) {
+                              _liveViewModel.setTrackingEnabled(value);
+                            },
+                          ),
+                        ],
+                      ),
+                      SizedBox(height: AppSpacing.xs.h),
+                      SizedBox(
+                        height: 220.h,
+                        child: !_liveViewModel.isTrackingEnabled
+                            ? AppStateCard(
+                                icon: Icons.pause_circle_outline,
+                                title: 'driver.tracking_off'.tr(),
+                                message: 'driver.tracking_paused_message'.tr(),
+                                actionLabel: 'actions.retry'.tr(),
+                                onAction: () {
+                                  _liveViewModel.setTrackingEnabled(true);
+                                },
+                              )
+                            : StreamBuilder<BusLocation?>(
+                                stream: _busLocationStream,
+                                builder: (context, snapshot) {
+                                  final busLocation = snapshot.data;
 
-                        final busLatLng = LatLng(
-                          busLocation.latitude,
-                          busLocation.longitude,
-                        );
+                                  if (_liveViewModel.trackingError != null) {
+                                    return AppStateCard(
+                                      icon: Icons.location_off_outlined,
+                                      title: 'states.error_title'.tr(),
+                                      message: _liveViewModel.trackingError!
+                                          .tr(),
+                                      actionLabel: 'actions.retry'.tr(),
+                                      onAction: _liveViewModel.startTracking,
+                                    );
+                                  }
 
-                        return StreamBuilder<List<Passenger>>(
-                          stream: _liveViewModel.watchPassengers(),
-                          builder: (context, passengerSnapshot) {
-                            final passengers =
-                                passengerSnapshot.data ?? const <Passenger>[];
-                            final route = _routePassengers(
-                              passengers,
-                              busLocation,
-                            );
-                            final markers = _buildMapMarkers(
-                              busLocation,
-                              route,
-                            );
-                            return FutureBuilder<Set<Polyline>>(
-                              future: _resolveRoutePolylines(
-                                busLocation,
-                                route,
+                                  if (snapshot.hasError) {
+                                    return AppStateCard(
+                                      icon: Icons.error_outline,
+                                      title: 'states.error_title'.tr(),
+                                      message: 'states.error_message'.tr(),
+                                      actionLabel: 'actions.retry'.tr(),
+                                      onAction: _liveViewModel.startTracking,
+                                    );
+                                  }
+
+                                  if (busLocation == null) {
+                                    return Padding(
+                                      padding: EdgeInsets.all(AppSpacing.xs.w),
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          AppSkeletonBox(
+                                            height: 150.h,
+                                            radius: AppRadius.sm,
+                                          ),
+                                          SizedBox(height: AppSpacing.xs.h),
+                                          AppSkeletonBox(
+                                            height: 10.h,
+                                            width: 160.w,
+                                          ),
+                                        ],
+                                      ),
+                                    );
+                                  }
+
+                                  final busLatLng = LatLng(
+                                    busLocation.latitude,
+                                    busLocation.longitude,
+                                  );
+
+                                  return StreamBuilder<List<Passenger>>(
+                                    stream: _passengersStream,
+                                    builder: (context, passengerSnapshot) {
+                                      final passengers =
+                                          passengerSnapshot.data ??
+                                          const <Passenger>[];
+                                      final route = _routePassengers(
+                                        passengers,
+                                        busLocation,
+                                      );
+                                      final markers = _buildMapMarkers(
+                                        busLocation,
+                                        route,
+                                      );
+                                      return FutureBuilder<Set<Polyline>>(
+                                        future: _resolveRoutePolylines(
+                                          busLocation,
+                                          route,
+                                        ),
+                                        initialData:
+                                            _buildStraightRoutePolyline(
+                                              busLocation,
+                                              route,
+                                            ),
+                                        builder: (context, routeSnapshot) {
+                                          final polylines =
+                                              routeSnapshot.data ??
+                                              const <Polyline>{};
+                                          return ClipRRect(
+                                            borderRadius: BorderRadius.circular(
+                                              AppRadius.sm.r,
+                                            ),
+                                            child: GoogleMap(
+                                              initialCameraPosition:
+                                                  CameraPosition(
+                                                    target: busLatLng,
+                                                    zoom: 15,
+                                                  ),
+                                              markers: markers,
+                                              polylines: polylines,
+                                              myLocationEnabled: true,
+                                              myLocationButtonEnabled: true,
+                                              zoomControlsEnabled: false,
+                                            ),
+                                          );
+                                        },
+                                      );
+                                    },
+                                  );
+                                },
                               ),
-                              initialData: _buildStraightRoutePolyline(
-                                busLocation,
-                                route,
-                              ),
-                              builder: (context, routeSnapshot) {
-                                final polylines =
-                                    routeSnapshot.data ?? const <Polyline>{};
-                                return ClipRRect(
-                                  borderRadius: BorderRadius.circular(
-                                    AppRadius.sm.r,
-                                  ),
-                                  child: GoogleMap(
-                                    initialCameraPosition: CameraPosition(
-                                      target: busLatLng,
-                                      zoom: 15,
-                                    ),
-                                    markers: markers,
-                                    polylines: polylines,
-                                    myLocationEnabled: true,
-                                    myLocationButtonEnabled: true,
-                                    zoomControlsEnabled: false,
-                                  ),
-                                );
-                              },
-                            );
-                          },
-                        );
-                      },
-                    ),
+                      ),
+                    ],
                   ),
                 ),
               ),
             ),
             Expanded(
               child: StreamBuilder(
-                stream: _liveViewModel.watchPassengers(),
+                stream: _passengersStream,
                 builder: (context, snapshot) {
                   final allPassengers = snapshot.data ?? const [];
-                  final passengers = _scheduledPassengers(allPassengers);
-                  final busLocationSnapshot = _liveViewModel.watchBusLocation();
+                  final passengers = allPassengers;
+                  final busLocationSnapshot = _busLocationStream;
 
                   if (snapshot.connectionState == ConnectionState.waiting) {
                     return Padding(
@@ -545,31 +664,60 @@ class _DriverScreenState extends State<DriverScreen>
                                     crossAxisAlignment:
                                         CrossAxisAlignment.start,
                                     children: [
-                                      Text(
-                                        'driver.schedule_updates_title'.tr(),
-                                        style: Theme.of(context)
-                                            .textTheme
-                                            .titleMedium
-                                            ?.copyWith(
-                                              fontWeight: FontWeight.w700,
-                                            ),
-                                      ),
-                                      SizedBox(height: AppSpacing.xs.h),
-                                      ...alerts
-                                          .take(3)
-                                          .map(
-                                            (alert) => Padding(
-                                              padding: EdgeInsets.only(
-                                                bottom: AppSpacing.xs.h,
-                                              ),
-                                              child: Text(
-                                                _formatScheduleAlert(alert),
-                                                style: Theme.of(
-                                                  context,
-                                                ).textTheme.bodySmall,
-                                              ),
+                                      Row(
+                                        children: [
+                                          Expanded(
+                                            child: Text(
+                                              'driver.schedule_updates_title'
+                                                  .tr(),
+                                              style: Theme.of(context)
+                                                  .textTheme
+                                                  .titleMedium
+                                                  ?.copyWith(
+                                                    fontWeight: FontWeight.w700,
+                                                  ),
                                             ),
                                           ),
+                                          TextButton.icon(
+                                            onPressed: () {
+                                              setState(() {
+                                                _alertsExpanded =
+                                                    !_alertsExpanded;
+                                              });
+                                            },
+                                            icon: Icon(
+                                              _alertsExpanded
+                                                  ? Icons.expand_less
+                                                  : Icons.expand_more,
+                                            ),
+                                            label: Text(
+                                              _alertsExpanded
+                                                  ? 'driver.schedule_updates_hide'
+                                                        .tr()
+                                                  : 'driver.schedule_updates_show'
+                                                        .tr(),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                      if (_alertsExpanded) ...[
+                                        SizedBox(height: AppSpacing.xs.h),
+                                        ...alerts
+                                            .take(3)
+                                            .map(
+                                              (alert) => Padding(
+                                                padding: EdgeInsets.only(
+                                                  bottom: AppSpacing.xs.h,
+                                                ),
+                                                child: Text(
+                                                  _formatScheduleAlert(alert),
+                                                  style: Theme.of(
+                                                    context,
+                                                  ).textTheme.bodySmall,
+                                                ),
+                                              ),
+                                            ),
+                                      ],
                                     ],
                                   ),
                                 ),
@@ -620,6 +768,8 @@ class _DriverScreenState extends State<DriverScreen>
                           );
                           final isManualUpdating = _liveViewModel
                               .isManualPickupInProgress(passenger.id);
+                          final isScheduleUpdating = _liveViewModel
+                              .isScheduleUpdateInProgress(passenger.id);
                           final canManualPickup =
                               !(passenger.isPickedUp ||
                                   passenger.geofenceState == 'picked_up');
@@ -703,6 +853,34 @@ class _DriverScreenState extends State<DriverScreen>
                                               _callPassenger(passenger),
                                           icon: const Icon(Icons.call_outlined),
                                           visualDensity: VisualDensity.compact,
+                                        ),
+                                        SizedBox(width: AppSpacing.xs.w),
+                                        FilledButton.tonal(
+                                          onPressed: isScheduleUpdating
+                                              ? null
+                                              : () => _editPassengerSchedule(
+                                                  passenger,
+                                                ),
+                                          style: FilledButton.styleFrom(
+                                            visualDensity:
+                                                VisualDensity.compact,
+                                            minimumSize: Size(0, 34.h),
+                                          ),
+                                          child: isScheduleUpdating
+                                              ? SizedBox(
+                                                  width: 12.w,
+                                                  height: 12.w,
+                                                  child:
+                                                      const CircularProgressIndicator(
+                                                        strokeWidth: 2,
+                                                      ),
+                                                )
+                                              : Text(
+                                                  'driver.edit_schedule'.tr(),
+                                                  style: Theme.of(
+                                                    context,
+                                                  ).textTheme.labelSmall,
+                                                ),
                                         ),
                                         SizedBox(width: AppSpacing.xs.w),
                                         FilledButton.tonal(
