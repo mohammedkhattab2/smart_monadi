@@ -5,7 +5,7 @@ class SignInUseCase {
 
   final AuthRepository _repository;
 
-  Future<void> call({required String email, required String password}) {
-    return _repository.signIn(email: email, password: password);
+  Future<void> call({required String nationalId, required String password}) {
+    return _repository.signIn(nationalId: nationalId, password: password);
   }
 }

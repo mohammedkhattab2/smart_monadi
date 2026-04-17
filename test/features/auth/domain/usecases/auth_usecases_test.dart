@@ -16,37 +16,29 @@ void main() {
       final repository = _FakeAuthRepository();
       final useCase = SignInUseCase(repository);
 
-      await useCase(email: 'ali@example.com', password: '123456');
+      await useCase(nationalId: '12345678901234', password: '123456');
 
       expect(repository.signInCalls, 1);
-      expect(repository.lastSignInEmail, 'ali@example.com');
+      expect(repository.lastSignInNationalId, '12345678901234');
       expect(repository.lastSignInPassword, '123456');
     });
 
-    test('RegisterUseCase delegates all passenger fields', () async {
+    test('RegisterUseCase delegates registration fields', () async {
       final repository = _FakeAuthRepository();
       final useCase = RegisterUseCase(repository);
 
       await useCase(
-        email: 'ali@example.com',
+        nationalId: '12345678901234',
+        username: 'Ali',
         password: '123456',
-        role: UserRole.passenger,
-        name: 'Ali',
-        passengerPhone: '+201111111111',
-        passengerAddress: 'Cairo',
-        pickupTime: '07:30',
-        returnTime: '14:30',
+        role: UserRole.parent,
       );
 
       expect(repository.registerCalls, 1);
-      expect(repository.lastRegisteredEmail, 'ali@example.com');
+      expect(repository.lastRegisteredNationalId, '12345678901234');
+      expect(repository.lastRegisteredUsername, 'Ali');
       expect(repository.lastRegisteredPassword, '123456');
-      expect(repository.lastRegisteredRole, UserRole.passenger);
-      expect(repository.lastRegisteredName, 'Ali');
-      expect(repository.lastRegisteredPhone, '+201111111111');
-      expect(repository.lastRegisteredAddress, 'Cairo');
-      expect(repository.lastRegisteredPickupTime, '07:30');
-      expect(repository.lastRegisteredReturnTime, '14:30');
+      expect(repository.lastRegisteredRole, UserRole.parent);
     });
 
     test('ResolveRoleUseCase returns repository role', () async {
@@ -85,20 +77,16 @@ class _FakeAuthRepository implements AuthRepository {
   int resolveRoleCalls = 0;
   int signOutCalls = 0;
 
-  String? lastSignInEmail;
+  String? lastSignInNationalId;
   String? lastSignInPassword;
 
-  String? lastRegisteredEmail;
+  String? lastRegisteredNationalId;
+  String? lastRegisteredUsername;
   String? lastRegisteredPassword;
   UserRole? lastRegisteredRole;
-  String? lastRegisteredName;
-  String? lastRegisteredPhone;
-  String? lastRegisteredAddress;
-  String? lastRegisteredPickupTime;
-  String? lastRegisteredReturnTime;
 
   String? lastResolvedUid;
-  UserRole resolvedRole = UserRole.passenger;
+  UserRole resolvedRole = UserRole.parent;
 
   final Stream<User?> authStateStream = const Stream<User?>.empty();
 
@@ -108,32 +96,27 @@ class _FakeAuthRepository implements AuthRepository {
   }
 
   @override
-  Future<void> signIn({required String email, required String password}) async {
+  Future<void> signIn({
+    required String nationalId,
+    required String password,
+  }) async {
     signInCalls += 1;
-    lastSignInEmail = email;
+    lastSignInNationalId = nationalId;
     lastSignInPassword = password;
   }
 
   @override
   Future<void> register({
-    required String email,
+    required String nationalId,
+    required String username,
     required String password,
     required UserRole role,
-    String? name,
-    String? passengerPhone,
-    String? passengerAddress,
-    String? pickupTime,
-    String? returnTime,
   }) async {
     registerCalls += 1;
-    lastRegisteredEmail = email;
+    lastRegisteredNationalId = nationalId;
+    lastRegisteredUsername = username;
     lastRegisteredPassword = password;
     lastRegisteredRole = role;
-    lastRegisteredName = name;
-    lastRegisteredPhone = passengerPhone;
-    lastRegisteredAddress = passengerAddress;
-    lastRegisteredPickupTime = pickupTime;
-    lastRegisteredReturnTime = returnTime;
   }
 
   @override

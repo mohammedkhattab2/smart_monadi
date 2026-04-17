@@ -7,24 +7,16 @@ class RegisterUseCase {
   final AuthRepository _repository;
 
   Future<void> call({
-    required String email,
+    required String nationalId,
+    required String username,
     required String password,
     required UserRole role,
-    String? name,
-    String? passengerPhone,
-    String? passengerAddress,
-    String? pickupTime,
-    String? returnTime,
   }) {
     return _repository.register(
-      email: email,
+      nationalId: nationalId,
+      username: username,
       password: password,
       role: role,
-      name: name,
-      passengerPhone: passengerPhone,
-      passengerAddress: passengerAddress,
-      pickupTime: pickupTime,
-      returnTime: returnTime,
     );
   }
 }

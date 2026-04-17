@@ -9,6 +9,7 @@ import 'package:smart_monadi/app/design/app_primitives.dart';
 import 'package:smart_monadi/app/design/design_tokens.dart';
 import 'package:smart_monadi/features/location/domain/entities/bus_location.dart';
 import 'package:smart_monadi/features/location/domain/repositories/bus_location_repository.dart';
+import 'package:smart_monadi/features/notifications/domain/controllers/active_trip_controller.dart';
 import 'package:smart_monadi/features/passenger/domain/entities/passenger.dart';
 import 'package:smart_monadi/features/passenger/domain/entities/passenger_timeline_event.dart';
 import 'package:smart_monadi/features/passenger/domain/repositories/passenger_repository.dart';
@@ -23,11 +24,13 @@ class PassengerScreen extends StatefulWidget {
     required this.repository,
     required this.locationRepository,
     required this.currentUserId,
+    required this.activeTripController,
   });
 
   final PassengerRepository repository;
   final BusLocationRepository locationRepository;
   final String currentUserId;
+  final ActiveTripController activeTripController;
 
   @override
   State<PassengerScreen> createState() => _PassengerScreenState();
@@ -54,6 +57,9 @@ class _PassengerScreenState extends State<PassengerScreen> {
   double? _selectedLatitude;
   double? _selectedLongitude;
   bool _isResolvingLocation = false;
+  ActiveTripState? _activeTripState;
+  bool _etaFocusActive = false;
+  Timer? _etaFocusResetTimer;
 
   @override
   void initState() {
@@ -65,11 +71,14 @@ class _PassengerScreenState extends State<PassengerScreen> {
     _watchPassengerTimelineUseCase = WatchPassengerTimelineUseCase(
       widget.repository,
     );
+    widget.activeTripController.addListener(_handleActiveTripStateChange);
+    _activeTripState = widget.activeTripController.value;
     _listenForNewTimelineEvents();
   }
 
   @override
   void dispose() {
+    widget.activeTripController.removeListener(_handleActiveTripStateChange);
     _viewModel.dispose();
     _nameController.dispose();
     _phoneController.dispose();
@@ -78,7 +87,84 @@ class _PassengerScreenState extends State<PassengerScreen> {
     _returnTimeController.dispose();
     _timelineSubscription?.cancel();
     _timelineSnackDebounce?.cancel();
+    _etaFocusResetTimer?.cancel();
     super.dispose();
+  }
+
+  void _handleActiveTripStateChange() {
+    if (!mounted) {
+      return;
+    }
+
+    final next = widget.activeTripController.value;
+    if (next == null) {
+      return;
+    }
+
+    if (next.tripId.isNotEmpty && next.tripId != widget.currentUserId) {
+      // ignore: avoid_print
+      print(
+        '⚠️ Trip state ignored for PassengerScreen: '
+        'tripId=${next.tripId}, currentUserId=${widget.currentUserId}',
+      );
+      return;
+    }
+
+    _activeTripState = next;
+    if (next.status == 'driver_arriving' || next.type == 'eta_update') {
+      _etaFocusActive = true;
+      _etaFocusResetTimer?.cancel();
+      _etaFocusResetTimer = Timer(const Duration(seconds: 12), () {
+        if (!mounted) {
+          return;
+        }
+        setState(() {
+          _etaFocusActive = false;
+        });
+      });
+    }
+
+    // ignore: avoid_print
+    print('🎯 UI updated without navigation (live bind mode)');
+    setState(() {});
+  }
+
+  Widget _buildLiveTripBindingCard() {
+    final active = _activeTripState;
+    if (active == null || !active.hasTripId) {
+      return const SizedBox.shrink();
+    }
+
+    final isCurrentPassengerTrip = active.tripId == widget.currentUserId;
+    if (!isCurrentPassengerTrip) {
+      return const SizedBox.shrink();
+    }
+
+    return AppFadeSlideIn(
+      delay: const Duration(milliseconds: 45),
+      child: AppSectionCard(
+        icon: Icons.route,
+        title: 'Live Trip Context',
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Trip ID: ${active.tripId}'),
+            SizedBox(height: AppSpacing.xs.h),
+            Text(
+              'Status: ${active.status.isEmpty ? 'unknown' : active.status}',
+            ),
+            if (active.driverId.isNotEmpty) ...[
+              SizedBox(height: AppSpacing.xs.h),
+              Text('Driver ID: ${active.driverId}'),
+            ],
+            if (_etaFocusActive) ...[
+              SizedBox(height: AppSpacing.xs.h),
+              AppStatusPill(label: 'ETA updated live', icon: Icons.timer),
+            ],
+          ],
+        ),
+      ),
+    );
   }
 
   void _listenForNewTimelineEvents() {
@@ -499,6 +585,9 @@ class _PassengerScreenState extends State<PassengerScreen> {
                   ),
                 ),
                 SizedBox(height: AppSpacing.md.h),
+                _buildLiveTripBindingCard(),
+                if (_activeTripState != null && _activeTripState!.hasTripId)
+                  SizedBox(height: AppSpacing.sm.h),
                 AppFadeSlideIn(
                   delay: const Duration(milliseconds: 80),
                   child: AppSectionCard(

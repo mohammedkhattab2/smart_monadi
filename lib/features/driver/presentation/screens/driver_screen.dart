@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:smart_monadi/app/config/runtime_env.dart';
 import 'package:smart_monadi/app/design/app_primitives.dart';
@@ -12,13 +13,19 @@ import 'package:smart_monadi/features/driver/data/services/google_directions_rou
 import 'package:smart_monadi/features/driver/domain/services/route_directions_service.dart';
 import 'package:smart_monadi/features/driver/presentation/viewmodels/driver_live_view_model.dart';
 import 'package:smart_monadi/features/location/domain/entities/bus_location.dart';
+import 'package:smart_monadi/features/notifications/domain/controllers/active_trip_controller.dart';
 import 'package:smart_monadi/features/passenger/domain/entities/passenger.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 class DriverScreen extends StatefulWidget {
-  const DriverScreen({super.key, required this.viewModel});
+  const DriverScreen({
+    super.key,
+    required this.viewModel,
+    required this.activeTripController,
+  });
 
   final DriverLiveViewModel viewModel;
+  final ActiveTripController activeTripController;
 
   @override
   State<DriverScreen> createState() => _DriverScreenState();
@@ -29,15 +36,23 @@ class _DriverScreenState extends State<DriverScreen>
   static final _directionsApiKey = RuntimeEnv.directionsApiKey;
   static final _directionsBackendUrl = RuntimeEnv.directionsBackendUrl;
   static final RegExp _timeRegex = RegExp(r'^([01]\d|2[0-3]):[0-5]\d$');
+  static const double _routeDeviationThresholdMeters = 45;
+  static const Duration _routeRefreshDebounce = Duration(seconds: 8);
 
   late final DriverLiveViewModel _liveViewModel;
   late final RouteDirectionsService? _routeDirectionsService;
   StreamSubscription<List<Passenger>>? _passengerChangesSubscription;
-  final Map<String, Future<Set<Polyline>>> _routePolylineCache =
-      <String, Future<Set<Polyline>>>{};
+  Future<Set<Polyline>>? _inFlightRouteFuture;
+  Set<Polyline>? _lastRenderedPolylines;
+  List<LatLng>? _lastEffectiveRoutePoints;
+  DateTime? _lastRouteFetchedAt;
+  String? _lastRouteStopsSignature;
   bool _alertsExpanded = false;
   late final Stream<List<Passenger>> _passengersStream;
   late final Stream<BusLocation?> _busLocationStream;
+  ActiveTripState? _activeTripState;
+  bool _highlightEtaFocus = false;
+  Timer? _focusResetTimer;
 
   @override
   void initState() {
@@ -57,10 +72,49 @@ class _DriverScreenState extends State<DriverScreen>
     }
     _passengersStream = _liveViewModel.watchPassengers();
     _busLocationStream = _liveViewModel.watchBusLocation();
+    widget.activeTripController.addListener(_handleActiveTripStateChange);
+    _activeTripState = widget.activeTripController.value;
     _liveViewModel.startTracking();
     _passengerChangesSubscription = _passengersStream.listen(
       _liveViewModel.onPassengerSchedulesSnapshot,
     );
+  }
+
+  void _handleActiveTripStateChange() {
+    if (!mounted) {
+      return;
+    }
+
+    final next = widget.activeTripController.value;
+    if (next == null) {
+      return;
+    }
+
+    _activeTripState = next;
+    if (next.type == 'trip_update') {
+      // Force polyline refresh when the trip state changes from notifications.
+      _lastRenderedPolylines = null;
+      _lastEffectiveRoutePoints = null;
+      _lastRouteFetchedAt = null;
+      _lastRouteStopsSignature = null;
+    }
+
+    if (next.status == 'driver_arriving' || next.type == 'eta_update') {
+      _highlightEtaFocus = true;
+      _focusResetTimer?.cancel();
+      _focusResetTimer = Timer(const Duration(seconds: 12), () {
+        if (!mounted) {
+          return;
+        }
+        setState(() {
+          _highlightEtaFocus = false;
+        });
+      });
+    }
+
+    // ignore: avoid_print
+    print('🎯 UI updated without navigation (live bind mode)');
+    setState(() {});
   }
 
   @override
@@ -74,9 +128,54 @@ class _DriverScreenState extends State<DriverScreen>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    widget.activeTripController.removeListener(_handleActiveTripStateChange);
     _passengerChangesSubscription?.cancel();
-    _routePolylineCache.clear();
+    _focusResetTimer?.cancel();
+    _inFlightRouteFuture = null;
+    _lastRenderedPolylines = null;
+    _lastEffectiveRoutePoints = null;
+    _lastRouteFetchedAt = null;
+    _lastRouteStopsSignature = null;
     super.dispose();
+  }
+
+  Widget _buildTripFocusBanner() {
+    final active = _activeTripState;
+    if (active == null || !active.hasTripId) {
+      return const SizedBox.shrink();
+    }
+
+    return Padding(
+      padding: EdgeInsets.fromLTRB(16.w, 10.h, 16.w, 0),
+      child: AppFadeSlideIn(
+        delay: const Duration(milliseconds: 40),
+        child: AppSectionCard(
+          icon: Icons.alt_route,
+          title: 'Live Trip Context',
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Trip ID: ${active.tripId}'),
+              SizedBox(height: AppSpacing.xs.h),
+              Text(
+                'Status: ${active.status.isEmpty ? 'unknown' : active.status}',
+              ),
+              if (active.driverId.isNotEmpty) ...[
+                SizedBox(height: AppSpacing.xs.h),
+                Text('Driver ID: ${active.driverId}'),
+              ],
+              if (_highlightEtaFocus) ...[
+                SizedBox(height: AppSpacing.xs.h),
+                AppStatusPill(
+                  label: 'ETA focus active',
+                  icon: Icons.timer_outlined,
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   String _formatScheduleAlert(DriverScheduleAlert alert) {
@@ -115,6 +214,7 @@ class _DriverScreenState extends State<DriverScreen>
   }
 
   Set<Marker> _buildMapMarkers(BusLocation busLocation, List<Passenger> route) {
+    final activeTripId = _activeTripState?.tripId.trim() ?? '';
     final latestPassengerId = route.isEmpty
         ? null
         : route
@@ -135,7 +235,9 @@ class _DriverScreenState extends State<DriverScreen>
           position: LatLng(passenger.latitude!, passenger.longitude!),
           infoWindow: InfoWindow(title: passenger.name),
           icon: BitmapDescriptor.defaultMarkerWithHue(
-            passenger.id == latestPassengerId
+            passenger.id == activeTripId
+                ? BitmapDescriptor.hueOrange
+                : passenger.id == latestPassengerId
                 ? BitmapDescriptor.hueGreen
                 : BitmapDescriptor.hueAzure,
           ),
@@ -159,44 +261,147 @@ class _DriverScreenState extends State<DriverScreen>
       ...route.map((p) => LatLng(p.latitude!, p.longitude!)),
     ];
 
+    final estimatedPoints = _buildEstimatedFallbackPoints(points);
+    final smoothedPoints = _smoothPolylinePoints(estimatedPoints);
+
     return {
       Polyline(
-        polylineId: const PolylineId('driver_route_preview'),
-        points: points,
+        polylineId: const PolylineId('driver_route_fallback_estimated'),
+        points: smoothedPoints,
         width: 5,
         geodesic: true,
-        color: Theme.of(context).colorScheme.primary,
+        color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.56),
+        patterns: <PatternItem>[PatternItem.dash(18), PatternItem.gap(12)],
       ),
     };
+  }
+
+  List<LatLng> _buildEstimatedFallbackPoints(List<LatLng> points) {
+    if (points.length < 2) {
+      return points;
+    }
+
+    final estimated = <LatLng>[points.first];
+    for (var i = 0; i < points.length - 1; i++) {
+      final start = points[i];
+      final end = points[i + 1];
+
+      final midLat = (start.latitude + end.latitude) / 2;
+      final midLng = (start.longitude + end.longitude) / 2;
+      final latDelta = end.latitude - start.latitude;
+      final lngDelta = end.longitude - start.longitude;
+
+      // Create a slight curved estimate to avoid harsh straight jumps.
+      final curveLat = midLat + (lngDelta * 0.08);
+      final curveLng = midLng - (latDelta * 0.08);
+      estimated.add(LatLng(curveLat, curveLng));
+      estimated.add(end);
+    }
+
+    return estimated;
+  }
+
+  List<LatLng> _smoothPolylinePoints(List<LatLng> points) {
+    if (points.length < 3) {
+      return points;
+    }
+
+    var output = List<LatLng>.from(points);
+    for (var iteration = 0; iteration < 2; iteration++) {
+      if (output.length >= 120) {
+        break;
+      }
+
+      final next = <LatLng>[output.first];
+      for (var i = 0; i < output.length - 1; i++) {
+        final p0 = output[i];
+        final p1 = output[i + 1];
+        final q = LatLng(
+          (0.75 * p0.latitude) + (0.25 * p1.latitude),
+          (0.75 * p0.longitude) + (0.25 * p1.longitude),
+        );
+        final r = LatLng(
+          (0.25 * p0.latitude) + (0.75 * p1.latitude),
+          (0.25 * p0.longitude) + (0.75 * p1.longitude),
+        );
+        next
+          ..add(q)
+          ..add(r);
+      }
+      next.add(output.last);
+      output = next;
+    }
+
+    return output;
+  }
+
+  bool _isFocusedTripPassenger(Passenger passenger) {
+    final activeTripId = _activeTripState?.tripId.trim() ?? '';
+    if (activeTripId.isEmpty) {
+      return false;
+    }
+    return passenger.id == activeTripId;
   }
 
   Future<Set<Polyline>> _resolveRoutePolylines(
     BusLocation busLocation,
     List<Passenger> route,
   ) {
-    final key = _routeKey(busLocation, route);
-    final cached = _routePolylineCache[key];
-    if (cached != null) {
-      return cached;
+    if (route.isEmpty) {
+      _lastRenderedPolylines = const <Polyline>{};
+      _lastEffectiveRoutePoints = null;
+      return Future.value(const <Polyline>{});
     }
 
-    final future = _loadRoutePolylines(busLocation, route);
-    _routePolylineCache[key] = future;
-    if (_routePolylineCache.length > 24) {
-      final firstKey = _routePolylineCache.keys.first;
-      _routePolylineCache.remove(firstKey);
+    final now = DateTime.now();
+    final origin = LatLng(busLocation.latitude, busLocation.longitude);
+    final stopsSignature = _buildStopsSignature(route);
+    final hasCachedRoute =
+        _lastRenderedPolylines != null && _lastEffectiveRoutePoints != null;
+    final stopsChanged = _lastRouteStopsSignature != stopsSignature;
+    final debounceElapsed =
+        _lastRouteFetchedAt == null ||
+        now.difference(_lastRouteFetchedAt!) >= _routeRefreshDebounce;
+    final deviated = hasCachedRoute
+        ? _hasDriverDeviatedFromCurrentPath(origin, _lastEffectiveRoutePoints!)
+        : true;
+
+    final shouldRecalculate =
+        !hasCachedRoute || stopsChanged || (deviated && debounceElapsed);
+
+    if (!shouldRecalculate && _lastRenderedPolylines != null) {
+      return Future.value(_lastRenderedPolylines!);
     }
-    return future;
+
+    if (_inFlightRouteFuture != null) {
+      return _inFlightRouteFuture!;
+    }
+
+    _inFlightRouteFuture = _loadRoutePolylines(
+      busLocation,
+      route,
+      stopsSignature: stopsSignature,
+    );
+
+    return _inFlightRouteFuture!.whenComplete(() {
+      _inFlightRouteFuture = null;
+    });
   }
 
   Future<Set<Polyline>> _loadRoutePolylines(
     BusLocation busLocation,
-    List<Passenger> route,
-  ) async {
+    List<Passenger> route, {
+    required String stopsSignature,
+  }) async {
     final fallback = _buildStraightRoutePolyline(busLocation, route);
     final routeColor = Theme.of(context).colorScheme.primary;
     final service = _routeDirectionsService;
     if (service == null || route.isEmpty) {
+      _logRoute('🟡 Using fallback route');
+      _lastRouteFetchedAt = DateTime.now();
+      _lastRouteStopsSignature = stopsSignature;
+      _lastRenderedPolylines = fallback;
+      _lastEffectiveRoutePoints = _extractPolylinePoints(fallback);
       return fallback;
     }
 
@@ -214,33 +419,84 @@ class _DriverScreenState extends State<DriverScreen>
         waypoints: waypoints,
       );
       if (points == null || points.length < 2) {
+        _logRoute('🟡 Using fallback route');
+        _lastRouteFetchedAt = DateTime.now();
+        _lastRouteStopsSignature = stopsSignature;
+        _lastRenderedPolylines = fallback;
+        _lastEffectiveRoutePoints = _extractPolylinePoints(fallback);
         return fallback;
       }
 
-      return {
+      final smoothedPoints = _smoothPolylinePoints(points);
+      final directionsPolylines = {
         Polyline(
           polylineId: const PolylineId('driver_route_directions'),
-          points: points,
-          width: 5,
+          points: smoothedPoints,
+          width: 6,
           geodesic: true,
           color: routeColor,
         ),
       };
+
+      _logRoute('🟢 Directions route applied');
+      _lastRouteFetchedAt = DateTime.now();
+      _lastRouteStopsSignature = stopsSignature;
+      _lastRenderedPolylines = directionsPolylines;
+      _lastEffectiveRoutePoints = smoothedPoints;
+
+      return directionsPolylines;
     } catch (_) {
+      _logRoute('🟡 Using fallback route');
+      _lastRouteFetchedAt = DateTime.now();
+      _lastRouteStopsSignature = stopsSignature;
+      _lastRenderedPolylines = fallback;
+      _lastEffectiveRoutePoints = _extractPolylinePoints(fallback);
       return fallback;
     }
   }
 
-  String _routeKey(BusLocation busLocation, List<Passenger> route) {
-    final origin =
-        '${busLocation.latitude.toStringAsFixed(5)},${busLocation.longitude.toStringAsFixed(5)}';
-    final stops = route
+  List<LatLng> _extractPolylinePoints(Set<Polyline> polylines) {
+    if (polylines.isEmpty) {
+      return const <LatLng>[];
+    }
+
+    final points = polylines.first.points;
+    return points.isEmpty ? const <LatLng>[] : points;
+  }
+
+  String _buildStopsSignature(List<Passenger> route) {
+    return route
         .map(
           (p) =>
               '${p.id}:${p.latitude!.toStringAsFixed(5)},${p.longitude!.toStringAsFixed(5)}',
         )
         .join('|');
-    return '$origin->$stops';
+  }
+
+  bool _hasDriverDeviatedFromCurrentPath(LatLng origin, List<LatLng> path) {
+    if (path.isEmpty) {
+      return true;
+    }
+
+    var minDistance = double.infinity;
+    for (final point in path) {
+      final distance = Geolocator.distanceBetween(
+        origin.latitude,
+        origin.longitude,
+        point.latitude,
+        point.longitude,
+      );
+      if (distance < minDistance) {
+        minDistance = distance;
+      }
+    }
+
+    return minDistance > _routeDeviationThresholdMeters;
+  }
+
+  void _logRoute(String message) {
+    // ignore: avoid_print
+    print(message);
   }
 
   Color _statusColor(Passenger passenger, ColorScheme colorScheme) {
@@ -421,6 +677,7 @@ class _DriverScreenState extends State<DriverScreen>
       builder: (context, _) {
         return Column(
           children: [
+            _buildTripFocusBanner(),
             Padding(
               padding: EdgeInsets.fromLTRB(16.w, 12.h, 16.w, 0),
               child: AppFadeSlideIn(
@@ -762,6 +1019,8 @@ class _DriverScreenState extends State<DriverScreen>
 
                           final passenger =
                               sortedPassengers[index - summaryIndex - 1];
+                          final isFocusedTripPassenger =
+                              _isFocusedTripPassenger(passenger);
                           final statusColor = _statusColor(
                             passenger,
                             colorScheme,
@@ -780,6 +1039,17 @@ class _DriverScreenState extends State<DriverScreen>
                                   (index * 35).clamp(0, 320).toInt(),
                             ),
                             child: Card(
+                              shape: RoundedRectangleBorder(
+                                side: isFocusedTripPassenger
+                                    ? BorderSide(
+                                        color: colorScheme.primary,
+                                        width: 1.2,
+                                      )
+                                    : BorderSide.none,
+                                borderRadius: BorderRadius.circular(
+                                  AppRadius.sm.r,
+                                ),
+                              ),
                               child: Padding(
                                 padding: EdgeInsets.all(AppSpacing.sm.w),
                                 child: Column(
@@ -813,16 +1083,42 @@ class _DriverScreenState extends State<DriverScreen>
                                         ),
                                       ],
                                     ),
+                                    if (isFocusedTripPassenger) ...[
+                                      SizedBox(height: AppSpacing.xxs.h),
+                                      AppStatusPill(
+                                        label: 'Live trip focus',
+                                        icon: Icons.my_location,
+                                      ),
+                                    ],
                                     SizedBox(height: AppSpacing.xs.h),
                                     Text(passenger.address),
                                     SizedBox(height: AppSpacing.xxs.h),
                                     Text(passenger.phone),
                                     SizedBox(height: AppSpacing.xxs.h),
-                                    Text(
-                                      _buildEtaText(
-                                        busLocation,
-                                        passenger.latitude,
-                                        passenger.longitude,
+                                    Container(
+                                      width: double.infinity,
+                                      padding: EdgeInsets.symmetric(
+                                        horizontal: AppSpacing.xs.w,
+                                        vertical: AppSpacing.xxs.h,
+                                      ),
+                                      decoration:
+                                          (_highlightEtaFocus &&
+                                              isFocusedTripPassenger)
+                                          ? BoxDecoration(
+                                              color:
+                                                  colorScheme.tertiaryContainer,
+                                              borderRadius:
+                                                  BorderRadius.circular(
+                                                    AppRadius.sm.r,
+                                                  ),
+                                            )
+                                          : null,
+                                      child: Text(
+                                        _buildEtaText(
+                                          busLocation,
+                                          passenger.latitude,
+                                          passenger.longitude,
+                                        ),
                                       ),
                                     ),
                                     SizedBox(height: AppSpacing.xs.h),

@@ -1,3 +1,4 @@
+import 'package:flutter/material.dart';
 import 'package:smart_monadi/features/auth/data/services/auth_service.dart';
 import 'package:smart_monadi/app/config/runtime_env.dart';
 import 'package:smart_monadi/features/auth/domain/repositories/auth_repository.dart';
@@ -14,6 +15,8 @@ import 'package:smart_monadi/features/location/data/services/device_location_ser
 import 'package:smart_monadi/features/location/domain/repositories/bus_location_repository.dart';
 import 'package:smart_monadi/features/location/domain/services/device_location_service.dart';
 import 'package:smart_monadi/features/notifications/data/services/push_notification_service.dart';
+import 'package:smart_monadi/features/notifications/domain/controllers/active_trip_controller.dart';
+import 'package:smart_monadi/features/notifications/domain/entities/notification_route_intent.dart';
 import 'package:smart_monadi/features/operations/data/repositories/firestore_operations_repository.dart';
 import 'package:smart_monadi/features/operations/domain/repositories/operations_repository.dart';
 import 'package:smart_monadi/features/operations/domain/usecases/enqueue_test_sms_use_case.dart';
@@ -30,6 +33,9 @@ import 'package:smart_monadi/features/passenger/domain/usecases/watch_passenger_
 
 class AppDependencies {
   AppDependencies._({
+    required this.navigatorKey,
+    required this.notificationRouteIntent,
+    required this.activeTripController,
     required this.authRepository,
     required this.passengerRepository,
     required this.operationsRepository,
@@ -40,15 +46,28 @@ class AppDependencies {
   });
 
   factory AppDependencies.create() {
+    final navigatorKey = GlobalKey<NavigatorState>();
+    final notificationRouteIntent = ValueNotifier<NotificationRouteIntent?>(
+      null,
+    );
+    final activeTripController = ActiveTripController();
     final authRepository = AuthService();
     final passengerRepository = FirestorePassengerRepository();
     final operationsRepository = FirestoreOperationsRepository();
     final tripEventRepository = FirestoreTripEventRepository();
     final locationRepository = FirestoreBusLocationRepository();
     final locationService = GeolocatorDeviceLocationService();
-    final pushNotificationService = PushNotificationService();
+    final pushNotificationService = PushNotificationService(
+      navigatorKey: navigatorKey,
+      onRouteIntent: (intent) {
+        notificationRouteIntent.value = intent;
+      },
+    );
 
     return AppDependencies._(
+      navigatorKey: navigatorKey,
+      notificationRouteIntent: notificationRouteIntent,
+      activeTripController: activeTripController,
       authRepository: authRepository,
       passengerRepository: passengerRepository,
       operationsRepository: operationsRepository,
@@ -59,6 +78,9 @@ class AppDependencies {
     );
   }
 
+  final GlobalKey<NavigatorState> navigatorKey;
+  final ValueNotifier<NotificationRouteIntent?> notificationRouteIntent;
+  final ActiveTripController activeTripController;
   final AuthRepository authRepository;
   final PassengerRepository passengerRepository;
   final OperationsRepository operationsRepository;

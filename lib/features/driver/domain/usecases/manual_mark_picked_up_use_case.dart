@@ -15,21 +15,34 @@ class ManualMarkPickedUpUseCase {
   Future<void> call(Passenger passenger) async {
     await _passengerRepository.markPickedUp(passengerId: passenger.id);
 
-    await _tripEventRepository.addPickupLog(
-      passengerId: passenger.id,
-      passengerPhone: passenger.phone,
-      type: 'picked_up_manual',
-      message: 'Passenger manually marked as picked up by driver',
-      payload: {'source': 'driver_manual_action', 'name': passenger.name},
-    );
+    try {
+      await _tripEventRepository.addPickupLog(
+        passengerId: passenger.id,
+        passengerPhone: passenger.phone,
+        type: 'picked_up_manual',
+        message: 'Passenger manually marked as picked up by driver',
+        payload: {'source': 'driver_manual_action', 'name': passenger.name},
+      );
+    } catch (_) {
+      // Side-effects must not block pickup confirmation success.
+    }
 
-    await _tripEventRepository.queueSms(
-      passengerId: passenger.id,
-      toPhone: passenger.phone,
-      template: 'arrival_now',
-      variables: {'name': passenger.name, 'pickupTime': passenger.pickupTime},
-      idempotencyKey: _buildManualArrivalSmsKey(passenger),
-    );
+    final phone = passenger.phone.trim();
+    if (phone.isEmpty) {
+      return;
+    }
+
+    try {
+      await _tripEventRepository.queueSms(
+        passengerId: passenger.id,
+        toPhone: phone,
+        template: 'arrival_now',
+        variables: {'name': passenger.name, 'pickupTime': passenger.pickupTime},
+        idempotencyKey: _buildManualArrivalSmsKey(passenger),
+      );
+    } catch (_) {
+      // Side-effects must not block pickup confirmation success.
+    }
   }
 
   String _buildManualArrivalSmsKey(Passenger passenger) {

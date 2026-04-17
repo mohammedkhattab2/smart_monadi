@@ -38,6 +38,7 @@ dependencies:
   firebase_auth: ^6.1.1
   cloud_firestore: ^6.2.0
   firebase_messaging: ^16.0.2
+  flutter_local_notifications: ^18.0.1
   http: ^1.2.2
   easy_localization: ^3.0.7+1
   flutter_screenutil: ^5.9.3
@@ -45,6 +46,7 @@ dependencies:
   google_maps_flutter: ^2.13.1
   url_launcher: ^6.3.1
   shared_preferences: ^2.5.3
+  flutter_secure_storage: ^9.2.4
   flutter_dotenv: ^5.2.1
 
 dev_dependencies:

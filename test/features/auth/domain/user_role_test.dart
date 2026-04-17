@@ -9,12 +9,14 @@ void main() {
       expect(userRoleFromString('سائق'), UserRole.driver);
     });
 
-    test('parses passenger/user values and defaults safely', () {
-      expect(userRoleFromString('passenger'), UserRole.passenger);
-      expect(userRoleFromString('USER'), UserRole.passenger);
-      expect(userRoleFromString('راكب'), UserRole.passenger);
-      expect(userRoleFromString('unknown'), UserRole.passenger);
-      expect(userRoleFromString(''), UserRole.passenger);
+    test('parses parent aliases and defaults safely', () {
+      expect(userRoleFromString('parent'), UserRole.parent);
+      expect(userRoleFromString('guardian'), UserRole.parent);
+      expect(userRoleFromString('passenger'), UserRole.parent);
+      expect(userRoleFromString('USER'), UserRole.parent);
+      expect(userRoleFromString('راكب'), UserRole.parent);
+      expect(userRoleFromString('unknown'), UserRole.parent);
+      expect(userRoleFromString(''), UserRole.parent);
     });
   });
 }

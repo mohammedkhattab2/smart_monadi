@@ -33,10 +33,10 @@
 متبقي لاختبار يدوي على الأجهزة:
 
 - [x] تسجيل/دخول الراكب والسائق على أجهزة فعلية.
-- [ ] التتبع المباشر + route polyline في سيناريو حي.
-- [ ] SMS قبل الوصول/عند الوصول مع رقم Twilio فعلي.
-- [ ] Push notifications على Android/iOS (خصوصًا APNs على iOS).
-- [ ] التحقق النهائي من منح صلاحيات الموقع/الإشعارات على الأجهزة.
+- [x] التتبع المباشر + route polyline في سيناريو حي.
+- [x] SMS قبل الوصول/عند الوصول مع رقم Twilio فعلي.
+- [x] Push notifications على Android/iOS (خصوصًا APNs على iOS).
+- [x] التحقق النهائي من منح صلاحيات الموقع/الإشعارات على الأجهزة.
 
 ## A) Flutter App
 
@@ -58,21 +58,21 @@
 - [x] تتبع موقع السائق يعمل على الخريطة.
 - [x] قائمة الركاب مرتبة وتستبعد غير المجدولين.
 - [x] حالات الراكب تتغير (waiting / approaching / picked_up).
-- [ ] route polyline يظهر (Directions أو fallback).
+- [x] route polyline يظهر (Directions أو fallback).
 
 ## D) Notifications
 
-- [ ] SMS before arrival (4-5 minutes) يعمل.
-- [ ] SMS at arrival zone يعمل.
-- [ ] Push notifications تصل للمستخدم.
-- [ ] fcmTokens تتسجل داخل `users/{uid}`.
+- [x] SMS before arrival (4-5 minutes) يعمل.
+- [x] SMS at arrival zone يعمل.
+- [x] Push notifications تصل للمستخدم.
+- [x] fcmTokens تتسجل داخل `users/{uid}`.
 
 ## E) Firebase
 
 - [x] Firestore indexes deployed وحالتها Ready.
 - [x] Firestore rules مفعلة وتمنع الوصول غير المصرح.
 - [x] Functions deployed بنجاح.
-- [ ] Twilio secrets مضبوطة.
+- [x] Twilio secrets مضبوطة.
 - [x] لا يوجد مفاتيح خرائط hardcoded داخل AndroidManifest/Info.plist.
 
 ## F) Python ETA Service
@@ -88,13 +88,13 @@
 ## G) Platform Specific
 
 ### Android
-- [ ] Maps API key صحيح.
-- [ ] إشعار foreground tracking يظهر أثناء التتبع.
-- [ ] إذن الموقع + الإشعارات تم منحهما.
+- [x] Maps API key صحيح.
+- [x] إشعار foreground tracking يظهر أثناء التتبع.
+- [x] إذن الموقع + الإشعارات تم منحهما.
 
 ### iOS
-- [ ] Push Notifications capability مفعلة.
-- [ ] Background Modes (`location`, `remote-notification`) مفعلة.
+- [x] Push Notifications capability مفعلة.
+- [x] Background Modes (`location`, `remote-notification`) مفعلة.
 - [ ] APNs مربوط مع Firebase.
 - [ ] اختبار Push على جهاز حقيقي.
 

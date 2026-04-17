@@ -55,6 +55,13 @@ flutter devices
 flutter run -d <DEVICE_ID> --dart-define=ETA_SERVICE_URL=http://192.168.1.4:8081 --dart-define=DIRECTIONS_BACKEND_URL=http://192.168.1.4:8081
 ```
 
+### بيانات الدخول الجديدة (مهم)
+
+- تسجيل الدخول أصبح: `رقم الهوية + كلمة السر`.
+- التسجيل أصبح: `اسم المستخدم + رقم الهوية + كلمة السر + تأكيد كلمة السر`.
+- الأدوار المتاحة في التسجيل: `ولي أمر` أو `سائق`.
+- يوجد خيار `حفظ كلمة السر` في شاشة تسجيل الدخول.
+
 ## 3) تشغيل الجهاز الحقيقي (نسخ سريع)
 
 عدّل الـ IP فقط ثم شغّل:
@@ -111,3 +118,57 @@ firebase deploy --only firestore:indexes
 ```
 
 ثم انتظر حتى الحالة تصبح `Ready` في Firebase Console.
+
+## 5.1) Migration اختياري للمستخدمين القدامى (passenger -> parent)
+
+لو عندك بيانات قديمة بأدوار `passenger` أو `user` وتريد توحيدها إلى `parent`:
+
+```powershell
+cd "D:\flutter project\smart_monadi"
+./scripts/migrate_legacy_roles_to_parent.ps1 -DryRun
+./scripts/migrate_legacy_roles_to_parent.ps1
+```
+
+ملاحظة:
+- السكربت يحتاج صلاحية Firebase Admin عبر `GOOGLE_APPLICATION_CREDENTIALS` أو Application Default Credentials.
+
+## 6) اختبار Live-Bind للإشعارات (FCM)
+
+استخدم Data Message في Firebase Console أو من الباكند بنفس البنية التالية.
+
+تحديث رحلة نشطة (لازم يحدث UI بدون تنقل إذا نفس الرحلة):
+
+```json
+{
+	"type": "trip_update",
+	"tripId": "trip_1",
+	"status": "driver_arriving",
+	"driverId": "drv_11"
+}
+```
+
+اختبار تعارض رحلة مختلفة (لازم يمنع overwrite ويظهر Active Trip Locked):
+
+```json
+{
+	"type": "trip_update",
+	"tripId": "trip_2",
+	"status": "driver_arriving",
+	"driverId": "drv_22"
+}
+```
+
+اختبار إنهاء الرحلة (لازم يمسح active trip state):
+
+```json
+{
+	"type": "trip_update",
+	"tripId": "trip_1",
+	"status": "completed",
+	"driverId": "drv_11"
+}
+```
+
+ملاحظات سريعة:
+- المفاتيح البديلة مدعومة أيضًا: `trip_id`, `driver_id`, `tripStatus`, `eventType`.
+- في وضع live bind، الأفضل إرسال الرسائل كـ data payload لضمان التوجيه الدقيق.

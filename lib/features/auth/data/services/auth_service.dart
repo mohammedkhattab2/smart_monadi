@@ -12,32 +12,43 @@ class AuthService implements AuthRepository {
   final FirebaseFirestore _firestore;
   static const int _resolveRoleRetries = 6;
   static const Duration _resolveRoleRetryDelay = Duration(milliseconds: 250);
+  static final RegExp _nationalIdRegex = RegExp(r'^\d{14}$');
   static final RegExp _timeRegex = RegExp(r'^([01]\d|2[0-3]):[0-5]\d$');
 
   @override
   Stream<User?> authStateChanges() => _auth.authStateChanges();
 
   @override
-  Future<void> signIn({required String email, required String password}) async {
+  Future<void> signIn({
+    required String nationalId,
+    required String password,
+  }) async {
+    final normalizedNationalId = _normalizeNationalId(nationalId);
     await _auth.signInWithEmailAndPassword(
-      email: email.trim(),
+      email: _emailFromNationalId(normalizedNationalId),
       password: password,
     );
   }
 
   @override
   Future<void> register({
-    required String email,
+    required String nationalId,
+    required String username,
     required String password,
     required UserRole role,
-    String? name,
-    String? passengerPhone,
-    String? passengerAddress,
-    String? pickupTime,
-    String? returnTime,
   }) async {
+    final normalizedNationalId = _normalizeNationalId(nationalId);
+    final normalizedUsername = username.trim();
+    if (normalizedUsername.isEmpty) {
+      throw FirebaseAuthException(
+        code: 'invalid-username',
+        message: 'Username is required.',
+      );
+    }
+
+    final internalEmail = _emailFromNationalId(normalizedNationalId);
     final credential = await _auth.createUserWithEmailAndPassword(
-      email: email,
+      email: internalEmail,
       password: password,
     );
 
@@ -46,29 +57,25 @@ class AuthService implements AuthRepository {
       throw Exception('User creation failed');
     }
 
-    final trimmedName = (name ?? '').trim();
     await _firestore.collection('users').doc(uid).set({
-      'email': email,
+      'email': internalEmail,
+      'nationalId': normalizedNationalId,
+      'username': normalizedUsername,
       'role': userRoleToString(role),
-      'name': trimmedName,
+      'name': normalizedUsername,
+      'authVersion': 2,
       'createdAt': Timestamp.now(),
       'updatedAt': Timestamp.now(),
     }, SetOptions(merge: true));
 
-    if (role == UserRole.passenger) {
-      final normalizedPickup = _normalizeScheduleTime(
-        pickupTime,
-        fallback: '07:30',
-      );
-      final normalizedReturn = _normalizeScheduleTime(
-        returnTime,
-        fallback: '14:30',
-      );
+    if (role == UserRole.parent) {
+      final normalizedPickup = _normalizeScheduleTime(null, fallback: '07:30');
+      final normalizedReturn = _normalizeScheduleTime(null, fallback: '14:30');
 
       await _firestore.collection('passengers').doc(uid).set({
-        'name': trimmedName,
-        'phone': (passengerPhone ?? '').trim(),
-        'address': (passengerAddress ?? '').trim(),
+        'name': normalizedUsername,
+        'phone': '',
+        'address': '',
         'pickupTime': normalizedPickup,
         'returnTime': normalizedReturn,
         'isPickedUp': false,
@@ -107,7 +114,23 @@ class AuthService implements AuthRepository {
     }
 
     // Conservative fallback to keep app usable if role doc is still missing.
-    return UserRole.passenger;
+    return UserRole.parent;
+  }
+
+  String _normalizeNationalId(String value) {
+    final normalized = value.trim();
+    if (_nationalIdRegex.hasMatch(normalized)) {
+      return normalized;
+    }
+
+    throw FirebaseAuthException(
+      code: 'invalid-national-id',
+      message: 'National ID must be exactly 14 digits.',
+    );
+  }
+
+  String _emailFromNationalId(String nationalId) {
+    return 'nid_$nationalId@smartmonadi.local';
   }
 
   String _normalizeScheduleTime(String? value, {required String fallback}) {

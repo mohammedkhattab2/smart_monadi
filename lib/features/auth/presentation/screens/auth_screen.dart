@@ -1,7 +1,9 @@
 import 'package:easy_localization/easy_localization.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:smart_monadi/app/design/app_primitives.dart';
 import 'package:smart_monadi/app/design/design_tokens.dart';
 import 'package:smart_monadi/features/auth/domain/repositories/auth_repository.dart';
@@ -20,21 +22,23 @@ class AuthScreen extends StatefulWidget {
 
 class _AuthScreenState extends State<AuthScreen>
     with SingleTickerProviderStateMixin {
-  static final RegExp _emailRegex = RegExp(
-    r'^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$',
-  );
+  static final RegExp _nationalIdRegex = RegExp(r'^\d{14}$');
+  static const _rememberPasswordKey = 'auth.remember_password';
+  static const _rememberedNationalIdKey = 'auth.remembered_national_id';
+  static const _securePasswordKey = 'auth.remembered_password';
 
   late final TabController _tabController;
   late final SignInUseCase _signInUseCase;
   late final RegisterUseCase _registerUseCase;
-  final _signInEmailController = TextEditingController();
+  final _signInNationalIdController = TextEditingController();
   final _signInPasswordController = TextEditingController();
-  final _registerEmailController = TextEditingController();
+  final _registerUsernameController = TextEditingController();
+  final _registerNationalIdController = TextEditingController();
   final _registerPasswordController = TextEditingController();
-  final _registerNameController = TextEditingController();
-  final _registerPhoneController = TextEditingController();
-  final _registerAddressController = TextEditingController();
-  UserRole _registerRole = UserRole.passenger;
+  final _registerConfirmPasswordController = TextEditingController();
+  final FlutterSecureStorage _secureStorage = const FlutterSecureStorage();
+  UserRole _registerRole = UserRole.parent;
+  bool _rememberPassword = false;
   bool _isLoading = false;
 
   @override
@@ -43,35 +47,66 @@ class _AuthScreenState extends State<AuthScreen>
     _tabController = TabController(length: 2, vsync: this);
     _signInUseCase = SignInUseCase(widget.authService);
     _registerUseCase = RegisterUseCase(widget.authService);
+    _restoreRememberedCredentials();
   }
 
   @override
   void dispose() {
     _tabController.dispose();
-    _signInEmailController.dispose();
+    _signInNationalIdController.dispose();
     _signInPasswordController.dispose();
-    _registerEmailController.dispose();
+    _registerUsernameController.dispose();
+    _registerNationalIdController.dispose();
     _registerPasswordController.dispose();
-    _registerNameController.dispose();
-    _registerPhoneController.dispose();
-    _registerAddressController.dispose();
+    _registerConfirmPasswordController.dispose();
     super.dispose();
   }
 
-  bool _isPassengerRegistrationValid() {
-    if (_registerRole != UserRole.passenger) {
-      return true;
+  Future<void> _restoreRememberedCredentials() async {
+    final prefs = await SharedPreferences.getInstance();
+    final remember = prefs.getBool(_rememberPasswordKey) ?? false;
+    if (!remember) {
+      return;
     }
 
-    return _registerPhoneController.text.trim().isNotEmpty &&
-        _registerAddressController.text.trim().isNotEmpty;
+    final nationalId = prefs.getString(_rememberedNationalIdKey) ?? '';
+    final password = await _secureStorage.read(key: _securePasswordKey) ?? '';
+    if (!mounted) {
+      return;
+    }
+
+    setState(() {
+      _rememberPassword = true;
+      _signInNationalIdController.text = nationalId;
+      _signInPasswordController.text = password;
+    });
+  }
+
+  Future<void> _persistRememberedCredentials() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_rememberPasswordKey, _rememberPassword);
+
+    if (_rememberPassword) {
+      await prefs.setString(
+        _rememberedNationalIdKey,
+        _signInNationalIdController.text.trim(),
+      );
+      await _secureStorage.write(
+        key: _securePasswordKey,
+        value: _signInPasswordController.text,
+      );
+      return;
+    }
+
+    await prefs.remove(_rememberedNationalIdKey);
+    await _secureStorage.delete(key: _securePasswordKey);
   }
 
   String? _validateSignInInputs() {
-    final email = _signInEmailController.text.trim();
+    final nationalId = _signInNationalIdController.text.trim();
     final password = _signInPasswordController.text;
-    if (!_emailRegex.hasMatch(email)) {
-      return 'auth.error_email_invalid'.tr();
+    if (!_nationalIdRegex.hasMatch(nationalId)) {
+      return 'auth.error_national_id_invalid'.tr();
     }
     if (password.length < 6) {
       return 'auth.error_password_short'.tr();
@@ -80,38 +115,44 @@ class _AuthScreenState extends State<AuthScreen>
   }
 
   String? _validateRegisterInputs() {
-    final email = _registerEmailController.text.trim();
+    final username = _registerUsernameController.text.trim();
+    final nationalId = _registerNationalIdController.text.trim();
     final password = _registerPasswordController.text;
-    final name = _registerNameController.text.trim();
+    final confirmPassword = _registerConfirmPasswordController.text;
 
-    if (name.isEmpty) {
-      return 'auth.error_name_required'.tr();
+    if (username.isEmpty) {
+      return 'auth.error_username_required'.tr();
     }
-    if (!_emailRegex.hasMatch(email)) {
-      return 'auth.error_email_invalid'.tr();
+    if (!_nationalIdRegex.hasMatch(nationalId)) {
+      return 'auth.error_national_id_invalid'.tr();
     }
     if (password.length < 6) {
       return 'auth.error_password_short'.tr();
+    }
+    if (confirmPassword != password) {
+      return 'auth.error_password_mismatch'.tr();
     }
 
     return null;
   }
 
-  Future<void> _run(Future<void> Function() action) async {
+  Future<bool> _run(Future<void> Function() action) async {
     setState(() {
       _isLoading = true;
     });
 
     try {
       await action();
+      return true;
     } catch (error) {
       if (!mounted) {
-        return;
+        return false;
       }
       final message = _mapErrorToMessage(error);
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text(message)));
+      return false;
     } finally {
       if (mounted) {
         setState(() {
@@ -124,22 +165,26 @@ class _AuthScreenState extends State<AuthScreen>
   String _mapErrorToMessage(Object error) {
     if (error is FirebaseAuthException) {
       switch (error.code) {
+        case 'invalid-national-id':
+          return 'auth.error_national_id_invalid'.tr();
+        case 'invalid-username':
+          return 'auth.error_username_required'.tr();
         case 'email-already-in-use':
-          return 'Email already in use.';
+          return 'auth.error_national_id_exists'.tr();
         case 'invalid-email':
-          return 'Invalid email format.';
+          return 'auth.error_national_id_invalid'.tr();
         case 'weak-password':
-          return 'Password is too weak (minimum 6 characters).';
+          return 'auth.error_password_short'.tr();
         case 'user-not-found':
         case 'wrong-password':
         case 'invalid-credential':
-          return 'Invalid email or password.';
+          return 'auth.error_invalid_credentials'.tr();
         case 'network-request-failed':
           return 'Network error. Check your internet connection.';
         case 'too-many-requests':
           return 'Too many attempts. Try again later.';
         case 'operation-not-allowed':
-          return 'Email/Password sign-in is disabled in Firebase.';
+          return 'National ID/Password sign-in is disabled in Firebase.';
         case 'internal-error':
           return 'Firebase internal error. Verify SHA fingerprints and google-services.json.';
         default:
@@ -233,15 +278,28 @@ class _AuthScreenState extends State<AuthScreen>
         child: Column(
           children: [
             TextField(
-              controller: _signInEmailController,
-              keyboardType: TextInputType.emailAddress,
-              decoration: InputDecoration(labelText: 'auth.email'.tr()),
+              controller: _signInNationalIdController,
+              keyboardType: TextInputType.number,
+              decoration: InputDecoration(labelText: 'auth.national_id'.tr()),
             ),
             SizedBox(height: AppSpacing.xs.h),
             TextField(
               controller: _signInPasswordController,
               obscureText: true,
               decoration: InputDecoration(labelText: 'auth.password'.tr()),
+            ),
+            SizedBox(height: AppSpacing.xs.h),
+            CheckboxListTile(
+              contentPadding: EdgeInsets.zero,
+              value: _rememberPassword,
+              title: Text('auth.remember_password'.tr()),
+              onChanged: _isLoading
+                  ? null
+                  : (value) {
+                      setState(() {
+                        _rememberPassword = value ?? false;
+                      });
+                    },
             ),
             SizedBox(height: AppSpacing.sm.h),
             SizedBox(
@@ -258,11 +316,15 @@ class _AuthScreenState extends State<AuthScreen>
                           return;
                         }
 
-                        _run(() {
+                        _run(() async {
                           return _signInUseCase(
-                            email: _signInEmailController.text.trim(),
+                            nationalId: _signInNationalIdController.text.trim(),
                             password: _signInPasswordController.text,
                           );
+                        }).then((success) {
+                          if (success) {
+                            _persistRememberedCredentials();
+                          }
                         });
                       },
                 child: _isLoading
@@ -286,14 +348,14 @@ class _AuthScreenState extends State<AuthScreen>
           child: Column(
             children: [
               TextField(
-                controller: _registerNameController,
-                decoration: InputDecoration(labelText: 'auth.name'.tr()),
+                controller: _registerUsernameController,
+                decoration: InputDecoration(labelText: 'auth.username'.tr()),
               ),
               SizedBox(height: AppSpacing.xs.h),
               TextField(
-                controller: _registerEmailController,
-                keyboardType: TextInputType.emailAddress,
-                decoration: InputDecoration(labelText: 'auth.email'.tr()),
+                controller: _registerNationalIdController,
+                keyboardType: TextInputType.number,
+                decoration: InputDecoration(labelText: 'auth.national_id'.tr()),
               ),
               SizedBox(height: AppSpacing.xs.h),
               TextField(
@@ -302,13 +364,21 @@ class _AuthScreenState extends State<AuthScreen>
                 decoration: InputDecoration(labelText: 'auth.password'.tr()),
               ),
               SizedBox(height: AppSpacing.xs.h),
+              TextField(
+                controller: _registerConfirmPasswordController,
+                obscureText: true,
+                decoration: InputDecoration(
+                  labelText: 'auth.confirm_password'.tr(),
+                ),
+              ),
+              SizedBox(height: AppSpacing.xs.h),
               DropdownButtonFormField<UserRole>(
                 initialValue: _registerRole,
                 decoration: InputDecoration(labelText: 'auth.role'.tr()),
                 items: [
                   DropdownMenuItem(
-                    value: UserRole.passenger,
-                    child: Text('auth.role_passenger'.tr()),
+                    value: UserRole.parent,
+                    child: Text('auth.role_parent'.tr()),
                   ),
                   DropdownMenuItem(
                     value: UserRole.driver,
@@ -324,23 +394,6 @@ class _AuthScreenState extends State<AuthScreen>
                   });
                 },
               ),
-              if (_registerRole == UserRole.passenger) ...[
-                SizedBox(height: AppSpacing.xs.h),
-                TextField(
-                  controller: _registerPhoneController,
-                  keyboardType: TextInputType.phone,
-                  decoration: InputDecoration(
-                    labelText: 'auth.passenger_phone'.tr(),
-                  ),
-                ),
-                SizedBox(height: AppSpacing.xs.h),
-                TextField(
-                  controller: _registerAddressController,
-                  decoration: InputDecoration(
-                    labelText: 'auth.passenger_address'.tr(),
-                  ),
-                ),
-              ],
               SizedBox(height: AppSpacing.sm.h),
               SizedBox(
                 width: double.infinity,
@@ -356,27 +409,13 @@ class _AuthScreenState extends State<AuthScreen>
                             return;
                           }
 
-                          if (!_isPassengerRegistrationValid()) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                content: Text(
-                                  'auth.error_passenger_required'.tr(),
-                                ),
-                              ),
-                            );
-                            return;
-                          }
-
                           _run(() {
                             return _registerUseCase(
-                              email: _registerEmailController.text.trim(),
+                              nationalId: _registerNationalIdController.text
+                                  .trim(),
+                              username: _registerUsernameController.text.trim(),
                               password: _registerPasswordController.text,
                               role: _registerRole,
-                              name: _registerNameController.text.trim(),
-                              passengerPhone: _registerPhoneController.text
-                                  .trim(),
-                              passengerAddress: _registerAddressController.text
-                                  .trim(),
                             );
                           });
                         },

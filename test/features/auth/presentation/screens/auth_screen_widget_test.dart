@@ -18,7 +18,7 @@ void main() {
     await EasyLocalization.ensureInitialized();
   });
 
-  testWidgets('sign in validates email and blocks repository call', (
+  testWidgets('sign in validates national id and blocks repository call', (
     tester,
   ) async {
     final originalOnError = FlutterError.onError;
@@ -65,7 +65,7 @@ void main() {
     final textFields = find.byType(TextField);
     expect(textFields, findsAtLeastNWidgets(2));
 
-    await tester.enterText(textFields.at(0), 'invalid-email');
+    await tester.enterText(textFields.at(0), '1234');
     await tester.enterText(textFields.at(1), '123456');
 
     var signInButton = find.widgetWithText(FilledButton, 'Sign In');
@@ -85,14 +85,13 @@ class _FakeAuthRepository implements AuthRepository {
   int signInCalls = 0;
   int registerCalls = 0;
 
-  String? lastSignInEmail;
+  String? lastSignInNationalId;
   String? lastSignInPassword;
 
-  String? lastRegisteredEmail;
+  String? lastRegisteredNationalId;
+  String? lastRegisteredUsername;
   String? lastRegisteredPassword;
   UserRole? lastRegisteredRole;
-  String? lastRegisteredPickupTime;
-  String? lastRegisteredReturnTime;
 
   @override
   Stream<User?> authStateChanges() {
@@ -100,34 +99,32 @@ class _FakeAuthRepository implements AuthRepository {
   }
 
   @override
-  Future<void> signIn({required String email, required String password}) async {
+  Future<void> signIn({
+    required String nationalId,
+    required String password,
+  }) async {
     signInCalls += 1;
-    lastSignInEmail = email;
+    lastSignInNationalId = nationalId;
     lastSignInPassword = password;
   }
 
   @override
   Future<void> register({
-    required String email,
+    required String nationalId,
+    required String username,
     required String password,
     required UserRole role,
-    String? name,
-    String? passengerPhone,
-    String? passengerAddress,
-    String? pickupTime,
-    String? returnTime,
   }) async {
     registerCalls += 1;
-    lastRegisteredEmail = email;
+    lastRegisteredNationalId = nationalId;
+    lastRegisteredUsername = username;
     lastRegisteredPassword = password;
     lastRegisteredRole = role;
-    lastRegisteredPickupTime = pickupTime;
-    lastRegisteredReturnTime = returnTime;
   }
 
   @override
   Future<UserRole> resolveRole(String uid) async {
-    return UserRole.passenger;
+    return UserRole.parent;
   }
 
   @override

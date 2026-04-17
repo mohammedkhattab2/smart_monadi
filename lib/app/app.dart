@@ -7,7 +7,9 @@ import 'package:smart_monadi/app/theme/app_theme.dart';
 import 'package:smart_monadi/features/auth/presentation/screens/auth_gate_screen.dart';
 
 class SmartMonadiApp extends StatefulWidget {
-  const SmartMonadiApp({super.key});
+  const SmartMonadiApp({super.key, required this.dependencies});
+
+  final AppDependencies dependencies;
 
   @override
   State<SmartMonadiApp> createState() => _SmartMonadiAppState();
@@ -15,7 +17,6 @@ class SmartMonadiApp extends StatefulWidget {
 
 class _SmartMonadiAppState extends State<SmartMonadiApp> {
   static const _themeModeKey = 'app.theme_mode';
-  final AppDependencies _dependencies = AppDependencies.create();
   ThemeMode _themeMode = ThemeMode.system;
   bool _settingsLoaded = false;
 
@@ -23,6 +24,9 @@ class _SmartMonadiAppState extends State<SmartMonadiApp> {
   void initState() {
     super.initState();
     _restoreSettings();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      widget.dependencies.pushNotificationService.onAppReady();
+    });
   }
 
   Future<void> _restoreSettings() async {
@@ -93,6 +97,7 @@ class _SmartMonadiAppState extends State<SmartMonadiApp> {
         return MaterialApp(
           title: 'Smart Monadi',
           debugShowCheckedModeBanner: false,
+          navigatorKey: widget.dependencies.navigatorKey,
           locale: context.locale,
           supportedLocales: context.supportedLocales,
           localizationsDelegates: context.localizationDelegates,
@@ -100,8 +105,8 @@ class _SmartMonadiAppState extends State<SmartMonadiApp> {
           darkTheme: AppTheme.dark(),
           themeMode: _themeMode,
           home: AuthGateScreen(
-            dependencies: _dependencies,
-            authRepository: _dependencies.authRepository,
+            dependencies: widget.dependencies,
+            authRepository: widget.dependencies.authRepository,
             onToggleLocale: () => _toggleLocale(context),
             onToggleTheme: _toggleThemeMode,
           ),

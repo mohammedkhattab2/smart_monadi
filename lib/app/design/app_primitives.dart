@@ -335,6 +335,7 @@ class AppSkeletonList extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Column(
+      mainAxisSize: MainAxisSize.min,
       children: List.generate(itemCount, (index) {
         return Padding(
           padding: EdgeInsets.only(bottom: AppSpacing.xs.h),

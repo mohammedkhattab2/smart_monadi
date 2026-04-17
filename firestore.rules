@@ -16,7 +16,15 @@ service cloud.firestore {
     }
 
     function isDriver() {
-      return userRole() == 'driver';
+      return userRole() in ['driver', 'سائق'];
+    }
+
+    function isParent() {
+      return userRole() in ['parent', 'passenger', 'user', 'راكب'];
+    }
+
+    function isParentSelf(uid) {
+      return isSelf(uid) && isParent();
     }
 
     match /users/{uid} {
@@ -24,8 +32,8 @@ service cloud.firestore {
     }
 
     match /passengers/{uid} {
-      allow read: if isSelf(uid) || isDriver();
-      allow create, update: if isSelf(uid) || isDriver();
+      allow read: if isParentSelf(uid) || isDriver();
+      allow create, update: if isParentSelf(uid) || isDriver();
       allow delete: if isDriver();
     }
 
@@ -36,7 +44,7 @@ service cloud.firestore {
 
     match /pickup_logs/{logId} {
       allow read: if isDriver() ||
-        (isSignedIn() && resource.data.passengerId == request.auth.uid);
+        (isParent() && resource.data.passengerId == request.auth.uid);
       allow create, update, delete: if isDriver();
     }
 

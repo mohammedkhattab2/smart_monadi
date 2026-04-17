@@ -17,6 +17,7 @@ import 'package:smart_monadi/features/driver/presentation/viewmodels/driver_live
 import 'package:smart_monadi/features/location/domain/entities/bus_location.dart';
 import 'package:smart_monadi/features/location/domain/repositories/bus_location_repository.dart';
 import 'package:smart_monadi/features/location/domain/services/device_location_service.dart';
+import 'package:smart_monadi/features/notifications/domain/controllers/active_trip_controller.dart';
 import 'package:smart_monadi/features/passenger/domain/entities/passenger.dart';
 import 'package:smart_monadi/features/passenger/domain/entities/passenger_timeline_event.dart';
 import 'package:smart_monadi/features/passenger/domain/repositories/passenger_repository.dart';
@@ -54,6 +55,7 @@ void main() {
 
     final harness = _DriverScreenTestHarness();
     final vm = harness.createViewModel();
+    final activeTripController = ActiveTripController();
     await vm.setTrackingEnabled(false);
 
     await tester.pumpWidget(
@@ -69,7 +71,12 @@ void main() {
               locale: context.locale,
               supportedLocales: context.supportedLocales,
               localizationsDelegates: context.localizationDelegates,
-              home: Scaffold(body: DriverScreen(viewModel: vm)),
+              home: Scaffold(
+                body: DriverScreen(
+                  viewModel: vm,
+                  activeTripController: activeTripController,
+                ),
+              ),
             ),
           ),
         ),
