@@ -12,8 +12,7 @@ class AuthService implements AuthRepository {
   final FirebaseFirestore _firestore;
   static const int _resolveRoleRetries = 6;
   static const Duration _resolveRoleRetryDelay = Duration(milliseconds: 250);
-  static final RegExp _nationalIdRegex = RegExp(r'^\d{14}$');
-  static final RegExp _timeRegex = RegExp(r'^([01]\d|2[0-3]):[0-5]\d$');
+  static final RegExp _nationalIdRegex = RegExp(r'^\d{10}$');
 
   @override
   Stream<User?> authStateChanges() => _auth.authStateChanges();
@@ -37,7 +36,7 @@ class AuthService implements AuthRepository {
     required String password,
     required UserRole role,
   }) async {
-    final normalizedNationalId = _normalizeNationalId(nationalId);
+    final normalizedNationalId = _normalizeNationalId(nationalId, role: role);
     final normalizedUsername = username.trim();
     if (normalizedUsername.isEmpty) {
       throw FirebaseAuthException(
@@ -67,22 +66,6 @@ class AuthService implements AuthRepository {
       'createdAt': Timestamp.now(),
       'updatedAt': Timestamp.now(),
     }, SetOptions(merge: true));
-
-    if (role == UserRole.parent) {
-      final normalizedPickup = _normalizeScheduleTime(null, fallback: '07:30');
-      final normalizedReturn = _normalizeScheduleTime(null, fallback: '14:30');
-
-      await _firestore.collection('passengers').doc(uid).set({
-        'name': normalizedUsername,
-        'phone': '',
-        'address': '',
-        'pickupTime': normalizedPickup,
-        'returnTime': normalizedReturn,
-        'isPickedUp': false,
-        'geofenceState': 'idle',
-        'updatedAt': Timestamp.now(),
-      }, SetOptions(merge: true));
-    }
   }
 
   @override
@@ -117,28 +100,21 @@ class AuthService implements AuthRepository {
     return UserRole.parent;
   }
 
-  String _normalizeNationalId(String value) {
+  String _normalizeNationalId(String value, {UserRole? role}) {
     final normalized = value.trim();
+
     if (_nationalIdRegex.hasMatch(normalized)) {
       return normalized;
     }
 
     throw FirebaseAuthException(
       code: 'invalid-national-id',
-      message: 'National ID must be exactly 14 digits.',
+      message: 'National ID must be exactly 10 digits.',
     );
   }
 
   String _emailFromNationalId(String nationalId) {
     return 'nid_$nationalId@smartmonadi.local';
-  }
-
-  String _normalizeScheduleTime(String? value, {required String fallback}) {
-    final raw = (value ?? '').trim();
-    if (_timeRegex.hasMatch(raw)) {
-      return raw;
-    }
-    return fallback;
   }
 
   @override

@@ -1,6 +1,7 @@
 import 'package:easy_localization/easy_localization.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -22,7 +23,7 @@ class AuthScreen extends StatefulWidget {
 
 class _AuthScreenState extends State<AuthScreen>
     with SingleTickerProviderStateMixin {
-  static final RegExp _nationalIdRegex = RegExp(r'^\d{14}$');
+  static final RegExp _nationalIdRegex = RegExp(r'^\d{10}$');
   static const _rememberPasswordKey = 'auth.remember_password';
   static const _rememberedNationalIdKey = 'auth.remembered_national_id';
   static const _securePasswordKey = 'auth.remembered_password';
@@ -106,7 +107,7 @@ class _AuthScreenState extends State<AuthScreen>
     final nationalId = _signInNationalIdController.text.trim();
     final password = _signInPasswordController.text;
     if (!_nationalIdRegex.hasMatch(nationalId)) {
-      return 'auth.error_national_id_invalid'.tr();
+      return 'auth.error_national_id_invalid_sign_in'.tr();
     }
     if (password.length < 6) {
       return 'auth.error_password_short'.tr();
@@ -123,7 +124,8 @@ class _AuthScreenState extends State<AuthScreen>
     if (username.isEmpty) {
       return 'auth.error_username_required'.tr();
     }
-    if (!_nationalIdRegex.hasMatch(nationalId)) {
+    final validNationalId = _nationalIdRegex.hasMatch(nationalId);
+    if (!validNationalId) {
       return 'auth.error_national_id_invalid'.tr();
     }
     if (password.length < 6) {
@@ -166,7 +168,7 @@ class _AuthScreenState extends State<AuthScreen>
     if (error is FirebaseAuthException) {
       switch (error.code) {
         case 'invalid-national-id':
-          return 'auth.error_national_id_invalid'.tr();
+          return 'auth.error_national_id_invalid_sign_in'.tr();
         case 'invalid-username':
           return 'auth.error_username_required'.tr();
         case 'email-already-in-use':
@@ -280,6 +282,8 @@ class _AuthScreenState extends State<AuthScreen>
             TextField(
               controller: _signInNationalIdController,
               keyboardType: TextInputType.number,
+              maxLength: 10,
+              inputFormatters: [FilteringTextInputFormatter.digitsOnly],
               decoration: InputDecoration(labelText: 'auth.national_id'.tr()),
             ),
             SizedBox(height: AppSpacing.xs.h),
@@ -355,6 +359,8 @@ class _AuthScreenState extends State<AuthScreen>
               TextField(
                 controller: _registerNationalIdController,
                 keyboardType: TextInputType.number,
+                maxLength: 10,
+                inputFormatters: [FilteringTextInputFormatter.digitsOnly],
                 decoration: InputDecoration(labelText: 'auth.national_id'.tr()),
               ),
               SizedBox(height: AppSpacing.xs.h),
@@ -391,6 +397,14 @@ class _AuthScreenState extends State<AuthScreen>
                   }
                   setState(() {
                     _registerRole = value;
+                    const maxLength = 10;
+                    final current = _registerNationalIdController.text;
+                    if (current.length > maxLength) {
+                      _registerNationalIdController.text = current.substring(
+                        0,
+                        maxLength,
+                      );
+                    }
                   });
                 },
               ),

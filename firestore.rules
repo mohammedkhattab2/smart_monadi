@@ -27,13 +27,18 @@ service cloud.firestore {
       return isSelf(uid) && isParent();
     }
 
+    function canAccessPassengerByParentId(parentId) {
+      return isDriver() || (isParent() && parentId == request.auth.uid);
+    }
+
     match /users/{uid} {
       allow read, write: if isSelf(uid);
     }
 
-    match /passengers/{uid} {
-      allow read: if isParentSelf(uid) || isDriver();
-      allow create, update: if isParentSelf(uid) || isDriver();
+    match /passengers/{passengerId} {
+      allow read: if canAccessPassengerByParentId(resource.data.parentId);
+      allow create: if canAccessPassengerByParentId(request.resource.data.parentId);
+      allow update: if canAccessPassengerByParentId(resource.data.parentId);
       allow delete: if isDriver();
     }
 
@@ -44,7 +49,9 @@ service cloud.firestore {
 
     match /pickup_logs/{logId} {
       allow read: if isDriver() ||
-        (isParent() && resource.data.passengerId == request.auth.uid);
+        (isParent() &&
+          exists(/databases/$(database)/documents/passengers/$(resource.data.passengerId)) &&
+          get(/databases/$(database)/documents/passengers/$(resource.data.passengerId)).data.parentId == request.auth.uid);
       allow create, update, delete: if isDriver();
     }
 

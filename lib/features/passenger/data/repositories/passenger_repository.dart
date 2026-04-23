@@ -26,6 +26,19 @@ class FirestorePassengerRepository implements PassengerRepository {
         );
   }
 
+  Stream<List<Passenger>> watchPassengersByParentId(String parentId) {
+    return _passengersRef
+        .where('parentId', isEqualTo: parentId)
+        .orderBy('updatedAt', descending: true)
+        .snapshots()
+        .map(
+          (snapshot) => snapshot.docs
+              .map(PassengerModel.fromFirestore)
+              .cast<Passenger>()
+              .toList(growable: false),
+        );
+  }
+
   @override
   Stream<Passenger?> watchPassengerById(String id) {
     return _passengersRef.doc(id).snapshots().map((snapshot) {
@@ -86,21 +99,53 @@ class FirestorePassengerRepository implements PassengerRepository {
     double? latitude,
     double? longitude,
   }) {
-    final model = PassengerModel(
-      id: id,
-      name: name,
-      phone: phone,
-      address: address,
-      pickupTime: pickupTime,
-      returnTime: returnTime,
-      latitude: latitude,
-      longitude: longitude,
-      updatedAtMillis: DateTime.now().millisecondsSinceEpoch,
-    );
+    return _passengersRef.doc(id).set({
+      'name': name,
+      'phone': phone,
+      'address': address,
+      'pickupTime': pickupTime,
+      'returnTime': returnTime,
+      'latitude': latitude,
+      'longitude': longitude,
+      'updatedAt': Timestamp.now(),
+    }, SetOptions(merge: true));
+  }
 
-    return _passengersRef
-        .doc(id)
-        .set(model.toFirestore(), SetOptions(merge: true));
+  Future<String> createPassengerForParent({
+    required String parentId,
+    required String studentNationalId,
+    required String birthDate,
+    required String name,
+    String dependentName = '',
+    required String phone,
+    required String address,
+    required String pickupTime,
+    required String returnTime,
+    required double latitude,
+    required double longitude,
+  }) async {
+    final ref = _passengersRef.doc();
+    final shortId = _buildShortId(ref.id);
+
+    await ref.set({
+      'parentId': parentId,
+      'shortId': shortId,
+      'studentNationalId': studentNationalId,
+      'birthDate': birthDate,
+      'name': name,
+      'dependentName': dependentName,
+      'phone': phone,
+      'address': address,
+      'pickupTime': pickupTime,
+      'returnTime': returnTime,
+      'latitude': latitude,
+      'longitude': longitude,
+      'isPickedUp': false,
+      'geofenceState': 'idle',
+      'updatedAt': Timestamp.now(),
+    });
+
+    return ref.id;
   }
 
   @override
@@ -148,5 +193,13 @@ class FirestorePassengerRepository implements PassengerRepository {
     return _passengersRef
         .doc(passengerId)
         .set(payload, SetOptions(merge: true));
+  }
+
+  String _buildShortId(String id) {
+    final clean = id.replaceAll(RegExp(r'[^A-Za-z0-9]'), '').toUpperCase();
+    if (clean.length >= 6) {
+      return clean.substring(0, 6);
+    }
+    return clean.padRight(6, '0');
   }
 }
