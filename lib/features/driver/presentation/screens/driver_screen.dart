@@ -17,6 +17,8 @@ import 'package:smart_monadi/features/notifications/domain/controllers/active_tr
 import 'package:smart_monadi/features/passenger/domain/entities/passenger.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+const LatLng _saudiDefaultLatLng = LatLng(24.7136, 46.6753);
+
 class DriverScreen extends StatefulWidget {
   const DriverScreen({
     super.key,
@@ -745,22 +747,18 @@ class _DriverScreenState extends State<DriverScreen>
                                   }
 
                                   if (busLocation == null) {
-                                    return Padding(
-                                      padding: EdgeInsets.all(AppSpacing.xs.w),
-                                      child: Column(
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.start,
-                                        children: [
-                                          AppSkeletonBox(
-                                            height: 150.h,
-                                            radius: AppRadius.sm,
-                                          ),
-                                          SizedBox(height: AppSpacing.xs.h),
-                                          AppSkeletonBox(
-                                            height: 10.h,
-                                            width: 160.w,
-                                          ),
-                                        ],
+                                    return ClipRRect(
+                                      borderRadius: BorderRadius.circular(
+                                        AppRadius.sm.r,
+                                      ),
+                                      child: const GoogleMap(
+                                        initialCameraPosition: CameraPosition(
+                                          target: _saudiDefaultLatLng,
+                                          zoom: 9,
+                                        ),
+                                        myLocationEnabled: true,
+                                        myLocationButtonEnabled: true,
+                                        zoomControlsEnabled: false,
                                       ),
                                     );
                                   }

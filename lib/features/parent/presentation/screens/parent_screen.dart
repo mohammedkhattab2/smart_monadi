@@ -12,6 +12,8 @@ import 'package:smart_monadi/features/passenger/data/repositories/passenger_repo
 import 'package:smart_monadi/features/passenger/domain/entities/passenger.dart';
 import 'package:smart_monadi/features/passenger/domain/repositories/passenger_repository.dart';
 
+const LatLng _saudiDefaultLatLng = LatLng(24.7136, 46.6753);
+
 class ParentScreen extends StatefulWidget {
   const ParentScreen({
     super.key,
@@ -71,7 +73,10 @@ class _ParentScreenState extends State<ParentScreen> {
       MaterialPageRoute(
         builder: (_) => _LocationPickerPage(
           title: 'اختيار موقع الوصول الثابت',
-          initialTarget: LatLng(existingLat ?? 30.0444, existingLng ?? 31.2357),
+          initialTarget: LatLng(
+            existingLat ?? _saudiDefaultLatLng.latitude,
+            existingLng ?? _saudiDefaultLatLng.longitude,
+          ),
           initialSelection: existingLat != null && existingLng != null
               ? LatLng(existingLat, existingLng)
               : null,
@@ -725,7 +730,10 @@ class _StudentFormPageState extends State<_StudentFormPage> {
       MaterialPageRoute(
         builder: (_) => _LocationPickerPage(
           title: 'اختيار موقع الاستلام',
-          initialTarget: LatLng(_pickupLat ?? 30.0444, _pickupLng ?? 31.2357),
+          initialTarget: LatLng(
+            _pickupLat ?? _saudiDefaultLatLng.latitude,
+            _pickupLng ?? _saudiDefaultLatLng.longitude,
+          ),
           initialSelection: _pickupLat != null && _pickupLng != null
               ? LatLng(_pickupLat!, _pickupLng!)
               : null,
@@ -1129,7 +1137,14 @@ class _ParentDriverLiveLocationPage extends StatelessWidget {
         builder: (context, snapshot) {
           final bus = snapshot.data;
           if (bus == null) {
-            return const Center(child: Text('لا يوجد موقع مباشر متاح الآن'));
+            return GoogleMap(
+              initialCameraPosition: const CameraPosition(
+                target: _saudiDefaultLatLng,
+                zoom: 9,
+              ),
+              myLocationEnabled: false,
+              myLocationButtonEnabled: false,
+            );
           }
 
           return GoogleMap(

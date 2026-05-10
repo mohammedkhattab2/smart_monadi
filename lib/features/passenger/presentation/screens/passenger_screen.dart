@@ -18,6 +18,8 @@ import 'package:smart_monadi/features/passenger/domain/usecases/watch_passenger_
 import 'package:smart_monadi/features/passenger/presentation/viewmodels/passenger_form_view_model.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+const LatLng _saudiDefaultLatLng = LatLng(24.7136, 46.6753);
+
 class PassengerScreen extends StatefulWidget {
   const PassengerScreen({
     super.key,
@@ -412,7 +414,7 @@ class _PassengerScreenState extends State<PassengerScreen> {
     final initialTarget =
         (_selectedLatitude != null && _selectedLongitude != null)
         ? LatLng(_selectedLatitude!, _selectedLongitude!)
-        : const LatLng(30.0444, 31.2357);
+        : _saudiDefaultLatLng;
 
     final picked = await Navigator.of(context).push<LatLng>(
       MaterialPageRoute(
@@ -722,12 +724,14 @@ class _PassengerScreenState extends State<PassengerScreen> {
                             height: 170.h,
                             child: GoogleMap(
                               key: ValueKey(
-                                'passenger_preview_${_selectedLatitude ?? 30.0444}_${_selectedLongitude ?? 31.2357}',
+                                'passenger_preview_${_selectedLatitude ?? _saudiDefaultLatLng.latitude}_${_selectedLongitude ?? _saudiDefaultLatLng.longitude}',
                               ),
                               initialCameraPosition: CameraPosition(
                                 target: LatLng(
-                                  _selectedLatitude ?? 30.0444,
-                                  _selectedLongitude ?? 31.2357,
+                                  _selectedLatitude ??
+                                      _saudiDefaultLatLng.latitude,
+                                  _selectedLongitude ??
+                                      _saudiDefaultLatLng.longitude,
                                 ),
                                 zoom:
                                     _selectedLatitude != null &&
